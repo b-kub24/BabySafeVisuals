@@ -1,0 +1,225 @@
+import SwiftUI
+
+struct ParentMenuView: View {
+    @Environment(AppState.self) private var appState
+    @State private var purchaseManager = PurchaseManager()
+    @State private var showGuidedAccessHelp = false
+    @State private var guidedAccessEnabled = GuidedAccessStatus.isEnabled
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    scenesSection
+                    purchaseSection
+                    settingsSection
+                    guidedAccessSection
+                    lockButton
+                }
+                .padding(20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Parent Menu")
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showGuidedAccessHelp) {
+                GuidedAccessHelpView()
+            }
+            .task {
+                await purchaseManager.loadProduct()
+                await purchaseManager.checkEntitlements(appState: appState)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.guidedAccessStatusDidChangeNotification)) { _ in
+                guidedAccessEnabled = GuidedAccessStatus.isEnabled
+            }
+        }
+    }
+
+    // MARK: - Scenes Grid
+
+    private var scenesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Scenes")
+                .font(.headline)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(SceneID.allCases) { scene in
+                    sceneCell(scene)
+                }
+            }
+        }
+    }
+
+    private func sceneCell(_ scene: SceneID) -> some View {
+        let isUnlocked = appState.isSceneUnlocked(scene)
+        let isActive = appState.activeScene == scene
+
+        return Button {
+            if isUnlocked {
+                appState.activeScene = scene
+            }
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(scene.previewColor)
+                        .frame(height: 80)
+
+                    if !isUnlocked {
+                        Image(systemName: "lock.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    } else {
+                        Image(systemName: scene.iconSystemName)
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(isActive ? Color.blue : Color.clear, lineWidth: 3)
+                )
+
+                Text(scene.displayName)
+                    .font(.caption)
+                    .foregroundStyle(isUnlocked ? .primary : .secondary)
+                    .lineLimit(1)
+
+                if scene.isFree {
+                    Text("FREE")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.green)
+                }
+            }
+        }
+        .disabled(!isUnlocked)
+    }
+
+    // MARK: - Purchase Section
+
+    @ViewBuilder
+    private var purchaseSection: some View {
+        if !appState.isPurchased {
+            VStack(spacing: 12) {
+                if let product = purchaseManager.product {
+                    Button {
+                        Task {
+                            await purchaseManager.purchase(appState: appState)
+                        }
+                    } label: {
+                        HStack {
+                            Text("Unlock All Scenes")
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Text(product.displayPrice)
+                                .fontWeight(.semibold)
+                        }
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(purchaseManager.isLoading)
+                }
+
+                Button {
+                    Task {
+                        await purchaseManager.restorePurchases(appState: appState)
+                    }
+                } label: {
+                    Text("Restore Purchases")
+                        .font(.subheadline)
+                        .foregroundStyle(.blue)
+                }
+                .disabled(purchaseManager.isLoading)
+
+                if let error = purchaseManager.errorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if purchaseManager.isLoading {
+                    ProgressView()
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+        }
+    }
+
+    // MARK: - Settings
+
+    private var settingsSection: some View {
+        @Bindable var state = appState
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Settings")
+                .font(.headline)
+
+            Toggle("Sound", isOn: $state.soundEnabled)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+        }
+    }
+
+    // MARK: - Guided Access
+
+    private var guidedAccessSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Guided Access")
+                .font(.headline)
+
+            HStack {
+                Image(systemName: guidedAccessEnabled ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(guidedAccessEnabled ? .green : .secondary)
+                Text(guidedAccessEnabled ? "Guided Access is ON" : "Guided Access is OFF")
+                    .font(.subheadline)
+                Spacer()
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+
+            Button {
+                showGuidedAccessHelp = true
+            } label: {
+                HStack {
+                    Image(systemName: "questionmark.circle")
+                    Text("How to enable Guided Access")
+                        .font(.subheadline)
+                }
+            }
+        }
+    }
+
+    // MARK: - Lock Button
+
+    private var lockButton: some View {
+        Button {
+            appState.lockParentMode()
+        } label: {
+            HStack {
+                Image(systemName: "lock.fill")
+                Text("Lock")
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color(.systemGray5))
+            .foregroundStyle(.primary)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(.top, 8)
+    }
+}

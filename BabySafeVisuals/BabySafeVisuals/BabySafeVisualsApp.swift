@@ -1,32 +1,21 @@
-//
-//  BabySafeVisualsApp.swift
-//  BabySafeVisuals
-//
-//  Created by Brent Kubitschek on 12/15/25.
-//
-
 import SwiftUI
-import SwiftData
 
 @main
 struct BabySafeVisualsApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @State private var appState = AppState()
+    @State private var motionManager = MotionManager()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppContainerView()
+                .environment(appState)
+                .environment(motionManager)
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    motionManager.stopUpdates()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    motionManager.startUpdates()
+                }
         }
-        .modelContainer(sharedModelContainer)
     }
 }
