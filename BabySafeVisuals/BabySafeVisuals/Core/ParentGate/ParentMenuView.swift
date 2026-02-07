@@ -5,6 +5,7 @@ struct ParentMenuView: View {
     @State private var purchaseManager = PurchaseManager()
     @State private var showGuidedAccessHelp = false
     @State private var guidedAccessEnabled = GuidedAccessStatus.isEnabled
+    @State private var showUnlockConfirmation = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)
@@ -18,13 +19,36 @@ struct ParentMenuView: View {
                     purchaseSection
                     settingsSection
                     guidedAccessSection
-                    lockButton
                 }
                 .padding(20)
+                .padding(.bottom, 80)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Parent Menu")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        HapticManager.tap()
+                        appState.lockParentMode()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.caption)
+                            Text("Lock")
+                                .fontWeight(.semibold)
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                lockBottomBar
+            }
             .sheet(isPresented: $showGuidedAccessHelp) {
                 GuidedAccessHelpView()
             }
@@ -59,32 +83,60 @@ struct ParentMenuView: View {
 
         return Button {
             if isUnlocked {
+                HapticManager.selection()
                 appState.activeScene = scene
             }
         } label: {
             VStack(spacing: 8) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(scene.previewColor)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    scene.previewColor,
+                                    scene.previewColor.opacity(0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(height: 80)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    RadialGradient(
+                                        colors: isActive
+                                            ? [.white.opacity(0.15), .clear]
+                                            : [.clear, .clear],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: 60
+                                    )
+                                )
+                        )
 
                     if !isUnlocked {
                         Image(systemName: "lock.fill")
                             .font(.title2)
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(.white.opacity(0.5))
                     } else {
                         Image(systemName: scene.iconSystemName)
                             .font(.title2)
-                            .foregroundStyle(.white.opacity(0.8))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .shadow(color: .white.opacity(0.3), radius: 4)
                     }
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(isActive ? Color.blue : Color.clear, lineWidth: 3)
+                        .strokeBorder(
+                            isActive ? Color.blue : Color.white.opacity(0.1),
+                            lineWidth: isActive ? 2.5 : 0.5
+                        )
                 )
 
                 Text(scene.displayName)
                     .font(.caption)
+                    .fontWeight(isActive ? .semibold : .regular)
                     .foregroundStyle(isUnlocked ? .primary : .secondary)
                     .lineLimit(1)
 
@@ -92,6 +144,10 @@ struct ParentMenuView: View {
                     Text("FREE")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
                 }
             }
         }
@@ -106,23 +162,47 @@ struct ParentMenuView: View {
             VStack(spacing: 12) {
                 if let product = purchaseManager.product {
                     Button {
-                        Task {
-                            await purchaseManager.purchase(appState: appState)
-                        }
+                        showUnlockConfirmation = true
                     } label: {
                         HStack {
-                            Text("Unlock All Scenes")
-                                .fontWeight(.semibold)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Unlock All Scenes")
+                                    .fontWeight(.semibold)
+                                Text("One-time purchase")
+                                    .font(.caption)
+                                    .opacity(0.8)
+                            }
                             Spacer()
                             Text(product.displayPrice)
-                                .fontWeight(.semibold)
+                                .fontWeight(.bold)
+                                .font(.title3)
                         }
                         .padding()
-                        .background(Color.blue)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.8)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(purchaseManager.isLoading)
+                    .confirmationDialog(
+                        "Unlock All Scenes",
+                        isPresented: $showUnlockConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Purchase for \(product.displayPrice)") {
+                            Task {
+                                await purchaseManager.purchase(appState: appState)
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This is a one-time purchase that unlocks all 6 premium scenes.")
+                    }
                 }
 
                 Button {
@@ -140,10 +220,12 @@ struct ParentMenuView: View {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .transition(.opacity)
                 }
 
                 if purchaseManager.isLoading {
                     ProgressView()
+                        .padding(.top, 4)
                 }
             }
             .padding(16)
@@ -151,6 +233,7 @@ struct ParentMenuView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(.secondarySystemGroupedBackground))
             )
+            .animation(.easeInOut(duration: 0.3), value: purchaseManager.errorMessage == nil)
         }
     }
 
@@ -162,12 +245,17 @@ struct ParentMenuView: View {
             Text("Settings")
                 .font(.headline)
 
-            Toggle("Sound", isOn: $state.soundEnabled)
-                .padding(16)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.secondarySystemGroupedBackground))
-                )
+            HStack {
+                Image(systemName: state.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .foregroundStyle(state.soundEnabled ? .blue : .secondary)
+                    .frame(width: 24)
+                Toggle("Sound Effects", isOn: $state.soundEnabled)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
         }
     }
 
@@ -178,48 +266,70 @@ struct ParentMenuView: View {
             Text("Guided Access")
                 .font(.headline)
 
-            HStack {
-                Image(systemName: guidedAccessEnabled ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundStyle(guidedAccessEnabled ? .green : .secondary)
-                Text(guidedAccessEnabled ? "Guided Access is ON" : "Guided Access is OFF")
-                    .font(.subheadline)
-                Spacer()
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: guidedAccessEnabled ? "checkmark.shield.fill" : "shield.slash")
+                        .foregroundStyle(guidedAccessEnabled ? .green : .secondary)
+                        .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(guidedAccessEnabled ? "Guided Access is ON" : "Guided Access is OFF")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text(guidedAccessEnabled
+                             ? "Device is pinned to this app"
+                             : "Recommended for safe handoff")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+
+                Divider()
+
+                Button {
+                    showGuidedAccessHelp = true
+                } label: {
+                    HStack {
+                        Image(systemName: "questionmark.circle")
+                        Text("How to enable Guided Access")
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(.secondarySystemGroupedBackground))
             )
-
-            Button {
-                showGuidedAccessHelp = true
-            } label: {
-                HStack {
-                    Image(systemName: "questionmark.circle")
-                    Text("How to enable Guided Access")
-                        .font(.subheadline)
-                }
-            }
         }
     }
 
-    // MARK: - Lock Button
+    // MARK: - Lock Bottom Bar
 
-    private var lockButton: some View {
+    private var lockBottomBar: some View {
         Button {
+            HapticManager.tap()
             appState.lockParentMode()
         } label: {
             HStack {
                 Image(systemName: "lock.fill")
-                Text("Lock")
+                Text("Lock & Return to Baby Mode")
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color(.systemGray5))
-            .foregroundStyle(.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color(.separator), lineWidth: 0.5)
+            )
         }
-        .padding(.top, 8)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
     }
 }

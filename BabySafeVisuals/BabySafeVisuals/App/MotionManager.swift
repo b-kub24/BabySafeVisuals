@@ -10,12 +10,17 @@ final class MotionManager {
 
     private let motionManager = CMMotionManager()
     private let updateInterval: TimeInterval = 1.0 / 60.0
+    private var isRunning = false
 
     func startUpdates() {
-        guard motionManager.isDeviceMotionAvailable else { return }
+        guard !isRunning, motionManager.isDeviceMotionAvailable else { return }
+        isRunning = true
         motionManager.deviceMotionUpdateInterval = updateInterval
-        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
-            guard let self, let motion else { return }
+        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
+            guard let self, self.isRunning, let motion else {
+                if error != nil { self?.isRunning = false }
+                return
+            }
             self.userAcceleration = motion.userAcceleration
             self.rotationRate = motion.rotationRate
             self.gravity = motion.gravity
@@ -23,6 +28,8 @@ final class MotionManager {
     }
 
     func stopUpdates() {
+        guard isRunning else { return }
+        isRunning = false
         motionManager.stopDeviceMotionUpdates()
     }
 
@@ -33,4 +40,8 @@ final class MotionManager {
 
     var tiltX: Double { gravity.x }
     var tiltY: Double { gravity.y }
+
+    /// Damped tilt values for smoother scene responses
+    var smoothTiltX: Double { gravity.x * 0.7 }
+    var smoothTiltY: Double { gravity.y * 0.7 }
 }

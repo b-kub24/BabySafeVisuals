@@ -6,12 +6,18 @@ struct ParentGateOverlay: View {
     @State private var holdProgress: Double = 0
     @State private var isHolding: Bool = false
     @State private var holdTimer: Timer?
+    @State private var isAuthenticating: Bool = false
+    @State private var lastMilestone: Int = 0
 
     private let holdDuration: Double = 6.0
     private let timerInterval: Double = 1.0 / 60.0
 
     private var hotspotSize: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 110 : 80
+    }
+
+    private var ringSize: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 56 : 40
     }
 
     var body: some View {
@@ -34,23 +40,42 @@ struct ParentGateOverlay: View {
                 .frame(width: hotspotSize, height: hotspotSize)
                 .contentShape(Rectangle())
 
-            // Subtle progress ring - only visible while holding
+            // Progress ring - visible while holding
             if isHolding {
-                Circle()
-                    .trim(from: 0, to: holdProgress)
-                    .stroke(
-                        Color.white.opacity(0.3),
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                    )
-                    .frame(width: hotspotSize * 0.5, height: hotspotSize * 0.5)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: timerInterval), value: holdProgress)
+                ZStack {
+                    // Track ring
+                    Circle()
+                        .stroke(Color.white.opacity(0.1), lineWidth: 2.5)
+                        .frame(width: ringSize, height: ringSize)
+
+                    // Progress ring with gradient
+                    Circle()
+                        .trim(from: 0, to: holdProgress)
+                        .stroke(
+                            AngularGradient(
+                                colors: [
+                                    Color.white.opacity(0.2),
+                                    Color.white.opacity(0.5)
+                                ],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                        )
+                        .frame(width: ringSize, height: ringSize)
+                        .rotationEffect(.degrees(-90))
+
+                    // Center dot brightens as progress increases
+                    Circle()
+                        .fill(Color.white.opacity(holdProgress > 0.8 ? 0.4 : 0.15))
+                        .frame(width: 4, height: 4)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
         }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    if !isHolding {
+                    if !isHolding && !isAuthenticating {
                         startHold()
                     }
                 }
@@ -63,14 +88,31 @@ struct ParentGateOverlay: View {
     private func startHold() {
         isHolding = true
         holdProgress = 0
+        lastMilestone = 0
         holdTimer?.invalidate()
+
+        HapticManager.tap()
+
         holdTimer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { timer in
             holdProgress += timerInterval / holdDuration
+
+            // Haptic milestones at 33%, 66%, and 90%
+            let currentMilestone = Int(holdProgress * 10)
+            if currentMilestone > lastMilestone {
+                lastMilestone = currentMilestone
+                if currentMilestone == 3 || currentMilestone == 6 {
+                    HapticManager.selection()
+                } else if currentMilestone == 9 {
+                    HapticManager.milestone()
+                }
+            }
+
             if holdProgress >= 1.0 {
                 timer.invalidate()
                 holdTimer = nil
                 isHolding = false
                 holdProgress = 0
+                HapticManager.unlock()
                 authenticateParent()
             }
         }
@@ -81,9 +123,13 @@ struct ParentGateOverlay: View {
         holdTimer = nil
         isHolding = false
         holdProgress = 0
+        lastMilestone = 0
     }
 
     private func authenticateParent() {
+        guard !isAuthenticating else { return }
+        isAuthenticating = true
+
         let context = LAContext()
         var error: NSError?
 
@@ -93,6 +139,7 @@ struct ParentGateOverlay: View {
                 localizedReason: "Authenticate to access parent controls"
             ) { success, _ in
                 DispatchQueue.main.async {
+                    isAuthenticating = false
                     if success {
                         appState.parentUnlocked = true
                     }
@@ -100,6 +147,7 @@ struct ParentGateOverlay: View {
             }
         } else {
             // No biometrics or passcode available - allow access after hold
+            isAuthenticating = false
             appState.parentUnlocked = true
         }
     }
