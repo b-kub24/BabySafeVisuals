@@ -47,6 +47,8 @@ struct ParentGateOverlay: View {
                     .animation(.linear(duration: timerInterval), value: holdProgress)
             }
         }
+        .accessibilityLabel("Parent Gate")
+        .accessibilityHint("Press and hold for 6 seconds to access parent controls")
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in

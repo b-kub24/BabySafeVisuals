@@ -96,6 +96,8 @@ struct ParentMenuView: View {
             }
         }
         .disabled(!isUnlocked)
+        .accessibilityLabel("\(scene.displayName) scene\(isActive ? ", currently active" : "")\(scene.isFree ? ", free" : ", premium")\(isUnlocked ? "" : ", locked")")
+        .accessibilityHint(isUnlocked ? "Double tap to switch to this scene" : "Requires purchase to unlock")
     }
 
     // MARK: - Purchase Section
@@ -123,6 +125,8 @@ struct ParentMenuView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(purchaseManager.isLoading)
+                    .accessibilityLabel("Unlock all premium scenes for \(product.displayPrice)")
+                    .accessibilityHint("Double tap to purchase")
                 }
 
                 Button {
@@ -135,6 +139,8 @@ struct ParentMenuView: View {
                         .foregroundStyle(.blue)
                 }
                 .disabled(purchaseManager.isLoading)
+                .accessibilityLabel("Restore previous purchases")
+                .accessibilityHint("Double tap if you already purchased to restore access")
 
                 if let error = purchaseManager.errorMessage {
                     Text(error)
@@ -168,6 +174,8 @@ struct ParentMenuView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color(.secondarySystemGroupedBackground))
                 )
+                .accessibilityLabel("Sound effects")
+                .accessibilityHint("Double tap to toggle sound on or off")
         }
     }
 
@@ -200,6 +208,8 @@ struct ParentMenuView: View {
                         .font(.subheadline)
                 }
             }
+            .accessibilityLabel("How to enable Guided Access")
+            .accessibilityHint("Double tap to view instructions")
         }
     }
 
@@ -221,5 +231,7 @@ struct ParentMenuView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .padding(.top, 8)
+        .accessibilityLabel("Lock and return to scene")
+        .accessibilityHint("Double tap to close parent menu and return to the active scene")
     }
 }
