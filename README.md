@@ -2,6 +2,10 @@
 
 A calm, parent-controlled iOS app for safe device handoff to young children.
 
+🌐 **Website:** [https://b-kub24.github.io/BabySafeVisuals/](https://b-kub24.github.io/BabySafeVisuals/)  
+🔐 **Privacy Policy:** [https://b-kub24.github.io/BabySafeVisuals/privacy-policy.html](https://b-kub24.github.io/BabySafeVisuals/privacy-policy.html)  
+💬 **Support:** [https://b-kub24.github.io/BabySafeVisuals/support.html](https://b-kub24.github.io/BabySafeVisuals/support.html)
+
 ## Features
 
 - **7 Interactive Scenes:** Snowglobe (free), Water Ripples, Color Mixer, Floating Bubbles, Magnetic Particles, Aurora Orbs, Calm Static
@@ -51,6 +55,11 @@ open BabySafeVisuals.xcodeproj
 ### Privacy Labels
 - Data Collected: **None**
 - Tracking: **No**
+
+### App Store URLs
+Use these URLs in App Store Connect:
+- **Privacy Policy URL:** `https://b-kub24.github.io/BabySafeVisuals/privacy-policy.html`
+- **Support URL:** `https://b-kub24.github.io/BabySafeVisuals/support.html`
 
 ## App Review Notes
 
