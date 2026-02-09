@@ -6,20 +6,23 @@ final class PurchaseManager {
     private(set) var isLoading: Bool = false
     private(set) var errorMessage: String?
     private(set) var product: Product?
+    private var hasLoadedProduct = false
+    private var isPurchasing = false
 
     static let productID = "unlock_all_scenes"
 
     /// Load the product from the App Store
     func loadProduct() async {
+        guard !hasLoadedProduct else { return }
         do {
             let products = try await Product.products(for: [Self.productID])
             if let foundProduct = products.first {
                 product = foundProduct
+                hasLoadedProduct = true
             } else {
                 errorMessage = "Product not found. Please check your App Store Connect configuration."
             }
         } catch {
-            // Network or configuration error
             if (error as NSError).code == NSURLErrorNotConnectedToInternet {
                 errorMessage = "No internet connection. Please try again later."
             } else {
@@ -34,7 +37,8 @@ final class PurchaseManager {
             errorMessage = "Product not available. Please restart the app."
             return
         }
-        
+        guard !isPurchasing else { return }
+        isPurchasing = true
         isLoading = true
         errorMessage = nil
 
@@ -44,24 +48,20 @@ final class PurchaseManager {
             case .success(let verification):
                 switch verification {
                 case .verified(let transaction):
-                    // Successfully verified purchase
                     appState.isPurchased = true
+                    HapticManager.unlock()
                     await transaction.finish()
                 case .unverified(_, let verificationError):
-                    // Purchase could not be verified (jailbreak detection, etc.)
                     errorMessage = "Purchase verification failed: \(verificationError.localizedDescription)"
                 }
             case .userCancelled:
-                // User cancelled - no error message needed
                 errorMessage = nil
             case .pending:
-                // Awaiting parental approval (Ask to Buy)
                 errorMessage = "Purchase pending. Check with your family organizer."
             @unknown default:
                 errorMessage = "An unexpected error occurred. Please contact support."
             }
         } catch let error as StoreKitError {
-            // Specific StoreKit errors
             switch error {
             case .networkError:
                 errorMessage = "Network error. Please check your connection."
@@ -75,15 +75,17 @@ final class PurchaseManager {
                 errorMessage = "Purchase failed: \(error.localizedDescription)"
             }
         } catch {
-            // Generic error fallback
             errorMessage = "Purchase failed. Please try again or contact support."
         }
 
         isLoading = false
+        isPurchasing = false
+        scheduleErrorDismissal()
     }
 
     /// Restore previous purchases
     func restorePurchases(appState: AppState) async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
 
@@ -100,12 +102,15 @@ final class PurchaseManager {
 
             if !foundPurchase {
                 errorMessage = "No previous purchases found for this Apple ID."
+            } else {
+                HapticManager.unlock()
             }
         } catch {
             errorMessage = "Unable to restore purchases. Please try again."
         }
 
         isLoading = false
+        scheduleErrorDismissal()
     }
 
     /// Check for existing entitlements on app launch
@@ -119,8 +124,17 @@ final class PurchaseManager {
                 }
             }
         } catch {
-            // Silently fail on launch - don't block the app
             print("⚠️ Failed to check entitlements: \(error.localizedDescription)")
+        }
+    }
+
+    private func scheduleErrorDismissal() {
+        guard errorMessage != nil else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if errorMessage != nil {
+                errorMessage = nil
+            }
         }
     }
 }
