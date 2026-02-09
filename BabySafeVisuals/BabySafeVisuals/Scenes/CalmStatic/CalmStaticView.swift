@@ -1,10 +1,50 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Models
+
+private struct Star {
+    let x: Double
+    let y: Double
+    let radius: Double
+    let baseOpacity: Double
+    let twinkleSpeed: Double
+    let phaseOffset: Double
+}
+
+private struct GlowPoint {
+    var x: Double
+    var y: Double
+    var age: Double
+    var lifetime: Double
+}
+
+// MARK: - View
 
 struct CalmStaticView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var glowPoints: [GlowPoint] = []
     @State private var lastUpdate: Date = .now
     @State private var stars: [Star] = []
     @State private var hasInitialized = false
+    @State private var currentSize: CGSize = .zero
+
+    private let edgeDeadZone: Double = 15
+    private let baseStarCount = 50
+
+    private var effectiveStarCount: Int {
+        var count = Int(Double(baseStarCount) * appState.particleDensity.multiplier)
+
+        // Battery-aware reduction
+        let batteryLevel = UIDevice.current.batteryLevel
+        if batteryLevel > 0 && batteryLevel < 0.2 {
+            count = count / 2
+        }
+
+        return max(1, count)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -13,9 +53,13 @@ struct CalmStaticView: View {
                 let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 15.0)
 
                 Canvas { context, size in
+                    guard size.width > 0, size.height > 0 else { return }
+
+                    let speedScale: Double = reduceMotion ? 0.3 : 1.0
+
                     // Cached stars with gentle twinkle
                     for star in stars {
-                        let twinkle = (sin(time * star.twinkleSpeed + star.phaseOffset) + 1) / 2
+                        let twinkle = (sin(time * star.twinkleSpeed * speedScale + star.phaseOffset) + 1) / 2
                         let opacity = star.baseOpacity + twinkle * 0.25
 
                         let rect = CGRect(
@@ -27,7 +71,7 @@ struct CalmStaticView: View {
                         context.opacity = opacity
                         context.fill(Circle().path(in: rect), with: .color(.white))
 
-                        // Subtle glow for brighter stars
+                        // Halo glow for brighter stars
                         if star.baseOpacity > 0.3 {
                             let glowR = star.radius * 3
                             let glowGradient = Gradient(colors: [
@@ -47,10 +91,14 @@ struct CalmStaticView: View {
                                 )
                             )
                         }
+
+                        // Reset opacity for subsequent draws
+                        context.opacity = 1.0
                     }
 
-                    // Central breathing glow
-                    let breathe = (sin(time * 0.15) + 1) / 2 * 0.06 + 0.02
+                    // Central breathing glow (slow sine wave)
+                    let breatheSpeed = reduceMotion ? 0.15 * 0.3 : 0.15
+                    let breathe = (sin(time * breatheSpeed) + 1) / 2 * 0.06 + 0.02
                     let breatheR = min(size.width, size.height) * 0.4
                     let breatheGradient = Gradient(colors: [
                         Color(red: 0.2, green: 0.25, blue: 0.5).opacity(breathe),
@@ -71,7 +119,7 @@ struct CalmStaticView: View {
                         )
                     )
 
-                    // Touch glow points
+                    // Touch glow points with fade-out
                     for glow in glowPoints {
                         let progress = glow.age / glow.lifetime
                         guard progress < 1.0 else { continue }
@@ -109,6 +157,7 @@ struct CalmStaticView: View {
                     )
                 )
                 .onChange(of: timeline.date) { _, newDate in
+                    // Age and prune glow points
                     for i in glowPoints.indices {
                         glowPoints[i].age += dt
                     }
@@ -117,21 +166,39 @@ struct CalmStaticView: View {
                 }
             }
             .onAppear {
+                UIDevice.current.isBatteryMonitoringEnabled = true
+                currentSize = geo.size
                 if !hasInitialized {
                     initStars(size: geo.size)
                     hasInitialized = true
                 }
             }
+            .onChange(of: geo.size) { _, newSize in
+                currentSize = newSize
+            }
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { value in addGlow(at: value.location) }
+                    .onChanged { value in
+                        let loc = value.location
+                        // Ignore touches in the edge dead zone
+                        if loc.x >= edgeDeadZone,
+                           loc.x <= geo.size.width - edgeDeadZone,
+                           loc.y >= edgeDeadZone,
+                           loc.y <= geo.size.height - edgeDeadZone {
+                            addGlow(at: loc)
+                        }
+                    }
             )
         }
     }
 
+    // MARK: - Initialization
+
     private func initStars(size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        stars = (0..<50).map { _ in
+
+        let count = effectiveStarCount
+        stars = (0..<count).map { _ in
             Star(
                 x: Double.random(in: 0...Double(size.width)),
                 y: Double.random(in: 0...Double(size.height)),
@@ -143,11 +210,15 @@ struct CalmStaticView: View {
         }
     }
 
+    // MARK: - Touch Handling
+
     private func addGlow(at point: CGPoint) {
         guard glowPoints.count < 10 else { return }
-        if let last = glowPoints.last {
-            let dx = last.x - Double(point.x)
-            let dy = last.y - Double(point.y)
+
+        // Enforce 25pt minimum spacing from existing glow points
+        for existing in glowPoints {
+            let dx = existing.x - Double(point.x)
+            let dy = existing.y - Double(point.y)
             if sqrt(dx * dx + dy * dy) < 25 { return }
         }
 
@@ -158,12 +229,4 @@ struct CalmStaticView: View {
             lifetime: Double.random(in: 3...6)
         ))
     }
-}
-
-private struct Star {
-    let x, y, radius, baseOpacity, twinkleSpeed, phaseOffset: Double
-}
-
-private struct GlowPoint {
-    var x, y, age, lifetime: Double
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum SceneID: String, CaseIterable, Identifiable {
+enum SceneID: String, CaseIterable, Identifiable, Hashable {
     case snowglobe
     case waterRipples
     case colorMixer
@@ -20,6 +20,18 @@ enum SceneID: String, CaseIterable, Identifiable {
         case .magneticParticles: return "Magnetic Particles"
         case .auroraOrbs: return "Aurora Orbs"
         case .calmStatic: return "Calm Static"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .snowglobe: return "Shake to swirl gentle snowflakes"
+        case .waterRipples: return "Touch to create expanding ripples"
+        case .colorMixer: return "Drag to blend colorful light"
+        case .bubbles: return "Pop floating iridescent bubbles"
+        case .magneticParticles: return "Guide swirling magnetic sparks"
+        case .auroraOrbs: return "Watch flowing aurora lights drift"
+        case .calmStatic: return "Peaceful twinkling starfield"
         }
     }
 
@@ -48,6 +60,18 @@ enum SceneID: String, CaseIterable, Identifiable {
         case .magneticParticles: return Color(red: 0.2, green: 0.1, blue: 0.3)
         case .auroraOrbs: return Color(red: 0.05, green: 0.2, blue: 0.25)
         case .calmStatic: return Color(red: 0.08, green: 0.08, blue: 0.15)
+        }
+    }
+
+    var previewGradientEnd: Color {
+        switch self {
+        case .snowglobe: return Color(red: 0.2, green: 0.25, blue: 0.5)
+        case .waterRipples: return Color(red: 0.15, green: 0.35, blue: 0.55)
+        case .colorMixer: return Color(red: 0.4, green: 0.2, blue: 0.45)
+        case .bubbles: return Color(red: 0.15, green: 0.4, blue: 0.5)
+        case .magneticParticles: return Color(red: 0.3, green: 0.15, blue: 0.45)
+        case .auroraOrbs: return Color(red: 0.1, green: 0.3, blue: 0.35)
+        case .calmStatic: return Color(red: 0.12, green: 0.12, blue: 0.22)
         }
     }
 }

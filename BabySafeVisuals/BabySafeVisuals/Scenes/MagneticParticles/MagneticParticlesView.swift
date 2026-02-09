@@ -1,156 +1,236 @@
 import SwiftUI
-import SpriteKit
+import UIKit
+
+// MARK: - Particle Model
+
+private struct MagneticParticle {
+    var x: Double
+    var y: Double
+    var vx: Double
+    var vy: Double
+    var radius: Double
+    var hue: Double
+}
+
+// MARK: - View
 
 struct MagneticParticlesView: View {
     @Environment(MotionManager.self) private var motion
-    @State private var magneticScene: MagneticScene?
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var particles: [MagneticParticle] = []
+    @State private var lastUpdate: Date = .now
     @State private var currentSize: CGSize = .zero
+    @State private var touchPoint: CGPoint? = nil
+
+    private let baseParticleCount = 200
+    private let edgeDeadZone: Double = 15
+
+    private var effectiveParticleCount: Int {
+        var count = Int(Double(baseParticleCount) * appState.particleDensity.multiplier)
+
+        // Battery-aware reduction
+        let batteryLevel = UIDevice.current.batteryLevel
+        if batteryLevel > 0 && batteryLevel < 0.2 {
+            count = count / 2
+        }
+
+        return max(1, count)
+    }
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Color(red: 0.08, green: 0.04, blue: 0.18)
+            TimelineView(.animation) { timeline in
+                let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
 
-                if let scene = magneticScene {
-                    SpriteView(scene: scene, options: [.allowsTransparency])
-                        .ignoresSafeArea()
+                Canvas { context, size in
+                    guard size.width > 0, size.height > 0 else { return }
+
+                    for particle in particles {
+                        let r = particle.radius
+                        let rect = CGRect(
+                            x: particle.x - r,
+                            y: particle.y - r,
+                            width: r * 2,
+                            height: r * 2
+                        )
+
+                        // Glow layer (larger, faint)
+                        let glowRadius = r * 3
+                        let glowRect = CGRect(
+                            x: particle.x - glowRadius,
+                            y: particle.y - glowRadius,
+                            width: glowRadius * 2,
+                            height: glowRadius * 2
+                        )
+                        let glowColor = Color(
+                            hue: particle.hue,
+                            saturation: 0.5,
+                            brightness: 1.0
+                        ).opacity(0.15)
+                        context.fill(
+                            Circle().path(in: glowRect),
+                            with: .radialGradient(
+                                Gradient(colors: [glowColor, .clear]),
+                                center: CGPoint(x: particle.x, y: particle.y),
+                                startRadius: 0,
+                                endRadius: glowRadius
+                            )
+                        )
+
+                        // Core particle
+                        let coreColor = Color(
+                            hue: particle.hue,
+                            saturation: 0.7,
+                            brightness: 0.95
+                        ).opacity(0.75)
+                        context.fill(
+                            Circle().path(in: rect),
+                            with: .color(coreColor)
+                        )
+
+                        // Bright center highlight
+                        let hlRadius = r * 0.5
+                        let hlRect = CGRect(
+                            x: particle.x - hlRadius,
+                            y: particle.y - hlRadius,
+                            width: hlRadius * 2,
+                            height: hlRadius * 2
+                        )
+                        let hlColor = Color(
+                            hue: particle.hue,
+                            saturation: 0.3,
+                            brightness: 1.0
+                        ).opacity(0.5)
+                        context.fill(
+                            Circle().path(in: hlRect),
+                            with: .color(hlColor)
+                        )
+                    }
+                }
+                .background(Color(red: 0.08, green: 0.04, blue: 0.18))
+                .onChange(of: timeline.date) { _, newDate in
+                    updateParticles(dt: dt, size: currentSize)
+                    lastUpdate = newDate
                 }
             }
             .onAppear {
+                UIDevice.current.isBatteryMonitoringEnabled = true
                 currentSize = geo.size
-                createScene(size: geo.size)
+                initParticles(size: geo.size)
             }
             .onChange(of: geo.size) { _, newSize in
-                if currentSize != newSize {
-                    currentSize = newSize
-                    magneticScene?.size = newSize
-                }
+                currentSize = newSize
             }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        magneticScene?.touchLocation = value.location
-                        magneticScene?.isTouching = true
+                        let loc = value.location
+                        // Ignore touches in the edge dead zone
+                        if loc.x >= edgeDeadZone,
+                           loc.x <= geo.size.width - edgeDeadZone,
+                           loc.y >= edgeDeadZone,
+                           loc.y <= geo.size.height - edgeDeadZone {
+                            touchPoint = loc
+                        } else {
+                            touchPoint = nil
+                        }
                     }
                     .onEnded { _ in
-                        magneticScene?.isTouching = false
+                        touchPoint = nil
                     }
             )
-            .onChange(of: motion.tiltX) { _, newValue in
-                magneticScene?.tiltX = newValue
-            }
-            .onChange(of: motion.tiltY) { _, newValue in
-                magneticScene?.tiltY = newValue
-            }
         }
     }
 
-    private func createScene(size: CGSize) {
+    // MARK: - Initialization
+
+    private func initParticles(size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        let scene = MagneticScene(size: size)
-        scene.scaleMode = .resizeFill
-        magneticScene = scene
-    }
-}
-
-class MagneticScene: SKScene {
-    var touchLocation: CGPoint = .zero
-    var isTouching: Bool = false
-    var tiltX: Double = 0
-    var tiltY: Double = 0
-
-    private let particleCount = 200
-    private var particles: [SKShapeNode] = []
-    private var velocities: [CGPoint] = []
-
-    override func didMove(to view: SKView) {
-        backgroundColor = UIColor(red: 0.08, green: 0.04, blue: 0.18, alpha: 1.0)
-        view.allowsTransparency = true
-
-        for _ in 0..<particleCount {
-            let radius = CGFloat.random(in: 1.5...3.5)
-            let node = SKShapeNode(circleOfRadius: radius)
-            node.position = CGPoint(
-                x: CGFloat.random(in: 0...size.width),
-                y: CGFloat.random(in: 0...size.height)
+        let count = effectiveParticleCount
+        particles = (0..<count).map { _ in
+            MagneticParticle(
+                x: Double.random(in: 0...size.width),
+                y: Double.random(in: 0...size.height),
+                vx: 0,
+                vy: 0,
+                radius: Double.random(in: 1.5...3.5),
+                hue: Double.random(in: 0.55...0.9)
             )
-            let hue = CGFloat.random(in: 0.55...0.9)
-            node.fillColor = SKColor(hue: hue, saturation: 0.7, brightness: 0.95, alpha: 0.75)
-            node.strokeColor = SKColor(hue: hue, saturation: 0.5, brightness: 1.0, alpha: 0.3)
-            node.lineWidth = 0.5
-            node.glowWidth = 1.5
-            node.zPosition = 1
-            addChild(node)
-            particles.append(node)
-            velocities.append(.zero)
         }
     }
 
-    override func update(_ currentTime: TimeInterval) {
-        let dt: CGFloat = 1.0 / 60.0
+    // MARK: - Physics Update
+
+    private func updateParticles(dt: Double, size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+
+        let tiltX = reduceMotion ? 0.0 : motion.tiltX
+        let tiltY = reduceMotion ? 0.0 : motion.tiltY
+        let hitRadiusScale = appState.touchSensitivity.radiusMultiplier
+        let margin: Double = 10
+        let damping: Double = 0.97
 
         for i in particles.indices {
-            let node = particles[i]
-            var vx = velocities[i].x
-            var vy = velocities[i].y
+            var vx = particles[i].vx
+            var vy = particles[i].vy
 
-            if isTouching {
-                let target = CGPoint(x: touchLocation.x, y: size.height - touchLocation.y)
-                let dx = target.x - node.position.x
-                let dy = target.y - node.position.y
+            // Magnetic attraction to touch
+            if let touch = touchPoint {
+                let dx = touch.x - particles[i].x
+                let dy = touch.y - particles[i].y
                 let dist = sqrt(dx * dx + dy * dy)
+                let hitRadius = 250.0 * hitRadiusScale
 
-                if dist > 3 {
-                    let strength = min(250 / max(dist, 1), 10)
+                if dist > 3, dist < hitRadius {
+                    let strength = min(250.0 / max(dist, 1.0), 10.0)
+                    let nx = dx / dist
+                    let ny = dy / dist
 
-                    // Attraction
-                    vx += (dx / dist) * strength * 50 * dt
-                    vy += (dy / dist) * strength * 50 * dt
+                    // Attraction toward touch
+                    vx += nx * strength * 50.0 * dt
+                    vy += ny * strength * 50.0 * dt
 
-                    // Orbital component for swirl effect
-                    vx += (-dy / dist) * strength * 18 * dt
-                    vy += (dx / dist) * strength * 18 * dt
+                    // Orbital swirl component (perpendicular)
+                    vx += (-ny) * strength * 18.0 * dt
+                    vy += nx * strength * 18.0 * dt
                 }
             }
 
-            // Tilt
-            vx += CGFloat(tiltX) * 25 * dt
-            vy -= CGFloat(tiltY) * 25 * dt
+            // Tilt response
+            vx += tiltX * 25.0 * dt
+            vy -= tiltY * 25.0 * dt
 
             // Damping
-            vx *= 0.97
-            vy *= 0.97
+            vx *= damping
+            vy *= damping
 
-            let newX = node.position.x + vx * dt
-            let newY = node.position.y + vy * dt
+            // Integrate position
+            var newX = particles[i].x + vx * dt
+            var newY = particles[i].y + vy * dt
 
-            // Soft boundary with bounce
-            let margin: CGFloat = 10
-            let boundedX: CGFloat
-            let boundedY: CGFloat
-
+            // Soft boundary bounce
             if newX < margin {
-                boundedX = margin
+                newX = margin
                 vx = abs(vx) * 0.3
             } else if newX > size.width - margin {
-                boundedX = size.width - margin
+                newX = size.width - margin
                 vx = -abs(vx) * 0.3
-            } else {
-                boundedX = newX
             }
 
             if newY < margin {
-                boundedY = margin
+                newY = margin
                 vy = abs(vy) * 0.3
             } else if newY > size.height - margin {
-                boundedY = size.height - margin
+                newY = size.height - margin
                 vy = -abs(vy) * 0.3
-            } else {
-                boundedY = newY
             }
 
-            node.position = CGPoint(x: boundedX, y: boundedY)
-            velocities[i] = CGPoint(x: vx, y: vy)
+            particles[i].x = newX
+            particles[i].y = newY
+            particles[i].vx = vx
+            particles[i].vy = vy
         }
     }
 }

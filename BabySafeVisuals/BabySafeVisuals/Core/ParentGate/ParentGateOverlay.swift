@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import LocalAuthentication
 
 struct ParentGateOverlay: View {
@@ -35,20 +36,16 @@ struct ParentGateOverlay: View {
 
     private var hotspotArea: some View {
         ZStack {
-            // Invisible touch target
             Color.clear
                 .frame(width: hotspotSize, height: hotspotSize)
                 .contentShape(Rectangle())
 
-            // Progress ring - visible while holding
             if isHolding {
                 ZStack {
-                    // Track ring
                     Circle()
                         .stroke(Color.white.opacity(0.1), lineWidth: 2.5)
                         .frame(width: ringSize, height: ringSize)
 
-                    // Progress ring with gradient
                     Circle()
                         .trim(from: 0, to: holdProgress)
                         .stroke(
@@ -64,7 +61,6 @@ struct ParentGateOverlay: View {
                         .frame(width: ringSize, height: ringSize)
                         .rotationEffect(.degrees(-90))
 
-                    // Center dot brightens as progress increases
                     Circle()
                         .fill(Color.white.opacity(holdProgress > 0.8 ? 0.4 : 0.15))
                         .frame(width: 4, height: 4)
@@ -98,7 +94,6 @@ struct ParentGateOverlay: View {
         holdTimer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { timer in
             holdProgress += timerInterval / holdDuration
 
-            // Haptic milestones at 33%, 66%, and 90%
             let currentMilestone = Int(holdProgress * 10)
             if currentMilestone > lastMilestone {
                 lastMilestone = currentMilestone
@@ -144,11 +139,12 @@ struct ParentGateOverlay: View {
                     isAuthenticating = false
                     if success {
                         appState.parentUnlocked = true
+                        appState.sessionLimitReached = false
+                        appState.sessionStartTime = .now
                     }
                 }
             }
         } else {
-            // No biometrics or passcode available - allow access after hold
             isAuthenticating = false
             appState.parentUnlocked = true
         }

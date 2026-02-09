@@ -1,6 +1,8 @@
 import SwiftUI
+import UIKit
 
 struct SnowglobeView: View {
+    @Environment(AppState.self) private var appState
     @Environment(MotionManager.self) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var particles: [SnowParticle] = []
@@ -8,8 +10,26 @@ struct SnowglobeView: View {
     @State private var lastUpdate: Date = .now
     @State private var currentSize: CGSize = .zero
 
-    private let maxParticles = 400
+    private let baseMaxParticles = 400
     private let spawnRate = 3
+
+    // MARK: - Computed Helpers
+
+    private var batteryMultiplier: Double {
+        let level = UIDevice.current.batteryLevel
+        return (level > 0 && level < 0.2) ? 0.5 : 1.0
+    }
+
+    private var effectiveMaxParticles: Int {
+        max(1, Int(Double(baseMaxParticles) * appState.particleDensity.multiplier * batteryMultiplier))
+    }
+
+    private func isInDeadZone(_ point: CGPoint, in size: CGSize) -> Bool {
+        point.x < 15 || point.x > size.width - 15 ||
+        point.y < 15 || point.y > size.height - 15
+    }
+
+    // MARK: - Body
 
     var body: some View {
         GeometryReader { geo in
@@ -17,6 +37,8 @@ struct SnowglobeView: View {
                 let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
 
                 Canvas { context, size in
+                    guard size.width > 0, size.height > 0 else { return }
+
                     // Vignette overlay for depth
                     let vignetteGradient = Gradient(colors: [
                         .clear,
@@ -49,7 +71,7 @@ struct SnowglobeView: View {
                         )
                     }
 
-                    // Snow particles with fade-in/out
+                    // Snow particles with fade-in/fade-out
                     for particle in particles {
                         let lifeProgress = particle.age / particle.lifetime
                         guard lifeProgress < 1.0 else { continue }
@@ -85,6 +107,7 @@ struct SnowglobeView: View {
                 }
             }
             .onAppear {
+                UIDevice.current.isBatteryMonitoringEnabled = true
                 currentSize = geo.size
                 initParticles(size: geo.size)
             }
@@ -94,15 +117,19 @@ struct SnowglobeView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        guard !isInDeadZone(value.location, in: currentSize) else { return }
                         addTouchBurst(at: value.location, size: currentSize)
                     }
             )
         }
     }
 
+    // MARK: - Particle Logic
+
     private func initParticles(size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        particles = (0..<maxParticles / 2).map { _ in
+        let count = effectiveMaxParticles / 2
+        particles = (0..<count).map { _ in
             SnowParticle.random(in: size, existingAge: true)
         }
     }
@@ -116,41 +143,58 @@ struct SnowglobeView: View {
 
     private func updateParticles(dt: Double, size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        let shake = reduceMotion ? 0 : motion.shakeIntensity
-        let tiltX = reduceMotion ? 0 : motion.tiltX
-        let tiltY = reduceMotion ? 0 : motion.tiltY
+        let maxP = effectiveMaxParticles
+        let shake = reduceMotion ? 0.0 : motion.shakeIntensity
+        let tiltX = reduceMotion ? 0.0 : motion.tiltX
+        let tiltY = reduceMotion ? 0.0 : motion.tiltY
 
-        if particles.count < maxParticles {
+        // Spawn new particles up to the effective cap
+        if particles.count < maxP {
             for _ in 0..<spawnRate {
+                guard particles.count < maxP else { break }
                 particles.append(SnowParticle.random(in: size, existingAge: false))
             }
         }
 
         for i in particles.indices {
             particles[i].age += dt
+
+            // Gravity drift downward
             particles[i].vy += 15 * dt
+
+            // Tilt influence
             particles[i].vx += tiltX * 30 * dt
             particles[i].vy -= tiltY * 15 * dt
 
+            // Shake burst
             if shake > 0.5 {
                 particles[i].vx += Double.random(in: -shake * 40...shake * 40) * dt
                 particles[i].vy += Double.random(in: -shake * 60...shake * 20) * dt
             }
 
+            // Sinusoidal horizontal drift
             particles[i].vx += sin(particles[i].age * particles[i].driftFreq) * 5 * dt
+
+            // Damping
             particles[i].vx *= (1.0 - 0.3 * dt)
             particles[i].vy *= (1.0 - 0.2 * dt)
+
+            // Position integration
             particles[i].x += particles[i].vx * dt
             particles[i].y += particles[i].vy * dt
 
+            // Horizontal wrap
             if particles[i].x < -10 { particles[i].x = size.width + 10 }
             if particles[i].x > size.width + 10 { particles[i].x = -10 }
 
+            // Settle at bottom
             if particles[i].y > size.height + 10 {
                 particles[i].y = size.height - Double.random(in: 0...5)
                 particles[i].vy = 0
                 particles[i].vx *= 0.1
             }
+
+            // Bounce off top
             if particles[i].y < -30 {
                 particles[i].y = -5
                 particles[i].vy = abs(particles[i].vy) * 0.3
@@ -161,9 +205,12 @@ struct SnowglobeView: View {
     }
 
     private func addTouchBurst(at point: CGPoint, size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
         let burstCount = 8
-        guard particles.count + burstCount <= maxParticles + 50 else { return }
+        let maxP = effectiveMaxParticles
+        guard particles.count + burstCount <= maxP + 50 else { return }
 
+        // Add touch glow with spacing check
         if touchGlows.count < 6 {
             if let last = touchGlows.last {
                 let dx = last.x - Double(point.x)
@@ -173,10 +220,14 @@ struct SnowglobeView: View {
             touchGlows.append(TouchGlow(x: Double(point.x), y: Double(point.y), age: 0, lifetime: 2.0))
         }
 
+        // Touch sensitivity scales the burst spread
+        let radiusMul = appState.touchSensitivity.radiusMultiplier
+        let spread = 20.0 * radiusMul
+
         for _ in 0..<burstCount {
             var p = SnowParticle.random(in: size, existingAge: false)
-            p.x = Double(point.x) + Double.random(in: -20...20)
-            p.y = Double(point.y) + Double.random(in: -20...20)
+            p.x = Double(point.x) + Double.random(in: -spread...spread)
+            p.y = Double(point.y) + Double.random(in: -spread...spread)
             p.vx = Double.random(in: -30...30)
             p.vy = Double.random(in: -40...10)
             p.radius = Double.random(in: 1.5...4.5)
@@ -184,6 +235,8 @@ struct SnowglobeView: View {
         }
     }
 }
+
+// MARK: - Data Types
 
 private struct SnowParticle {
     var x, y, vx, vy, radius, opacity, age, lifetime, driftFreq: Double

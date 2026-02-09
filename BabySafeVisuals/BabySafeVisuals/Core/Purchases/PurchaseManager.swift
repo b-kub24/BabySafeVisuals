@@ -5,38 +5,46 @@ import Foundation
 final class PurchaseManager {
     private(set) var isLoading: Bool = false
     private(set) var errorMessage: String?
-    private(set) var product: Product?
-    private var hasLoadedProduct = false
+    private(set) var products: [Product] = []
+    private var hasLoadedProducts = false
     private var isPurchasing = false
 
-    static let productID = "unlock_all_scenes"
+    static let oneSceneProductID = "unlock_one_scene"
+    static let threeScenesProductID = "unlock_three_scenes"
 
-    /// Load the product from the App Store
-    func loadProduct() async {
-        guard !hasLoadedProduct else { return }
+    private static let allProductIDs: Set<String> = [
+        oneSceneProductID,
+        threeScenesProductID
+    ]
+
+    var oneSceneProduct: Product? {
+        products.first { $0.id == Self.oneSceneProductID }
+    }
+
+    var threeScenesProduct: Product? {
+        products.first { $0.id == Self.threeScenesProductID }
+    }
+
+    // MARK: - Load Products
+
+    func loadProducts() async {
+        guard !hasLoadedProducts else { return }
         do {
-            let products = try await Product.products(for: [Self.productID])
-            if let foundProduct = products.first {
-                product = foundProduct
-                hasLoadedProduct = true
-            } else {
-                errorMessage = "Product not found. Please check your App Store Connect configuration."
-            }
+            let fetched = try await Product.products(for: Self.allProductIDs)
+            products = fetched.sorted { $0.price < $1.price }
+            hasLoadedProducts = true
         } catch {
             if (error as NSError).code == NSURLErrorNotConnectedToInternet {
                 errorMessage = "No internet connection. Please try again later."
             } else {
-                errorMessage = "Unable to load product information. Please check your connection."
+                errorMessage = "Unable to load products. Please check your connection."
             }
         }
     }
 
-    /// Purchase the product
-    func purchase(appState: AppState) async {
-        guard let product else {
-            errorMessage = "Product not available. Please restart the app."
-            return
-        }
+    // MARK: - Purchase
+
+    func purchase(product: Product, appState: AppState) async {
         guard !isPurchasing else { return }
         isPurchasing = true
         isLoading = true
@@ -48,7 +56,7 @@ final class PurchaseManager {
             case .success(let verification):
                 switch verification {
                 case .verified(let transaction):
-                    appState.isPurchased = true
+                    appState.purchasedTiers.insert(transaction.productID)
                     HapticManager.unlock()
                     await transaction.finish()
                 case .unverified(_, let verificationError):
@@ -59,12 +67,12 @@ final class PurchaseManager {
             case .pending:
                 errorMessage = "Purchase pending. Check with your family organizer."
             @unknown default:
-                errorMessage = "An unexpected error occurred. Please contact support."
+                errorMessage = "An unexpected error occurred."
             }
         } catch let error as StoreKitError {
             switch error {
             case .networkError:
-                errorMessage = "Network error. Please check your connection."
+                errorMessage = "Network error. Please check your connection and try again."
             case .userCancelled:
                 errorMessage = nil
             case .notAvailableInStorefront:
@@ -75,7 +83,7 @@ final class PurchaseManager {
                 errorMessage = "Purchase failed: \(error.localizedDescription)"
             }
         } catch {
-            errorMessage = "Purchase failed. Please try again or contact support."
+            errorMessage = "Purchase failed. Please try again."
         }
 
         isLoading = false
@@ -83,7 +91,8 @@ final class PurchaseManager {
         scheduleErrorDismissal()
     }
 
-    /// Restore previous purchases
+    // MARK: - Restore
+
     func restorePurchases(appState: AppState) async {
         guard !isLoading else { return }
         isLoading = true
@@ -92,11 +101,11 @@ final class PurchaseManager {
         var foundPurchase = false
         do {
             for await result in Transaction.currentEntitlements {
-                if case .verified(let transaction) = result,
-                   transaction.productID == Self.productID {
-                    appState.isPurchased = true
-                    foundPurchase = true
-                    break
+                if case .verified(let transaction) = result {
+                    if Self.allProductIDs.contains(transaction.productID) {
+                        appState.purchasedTiers.insert(transaction.productID)
+                        foundPurchase = true
+                    }
                 }
             }
 
@@ -113,20 +122,23 @@ final class PurchaseManager {
         scheduleErrorDismissal()
     }
 
-    /// Check for existing entitlements on app launch
+    // MARK: - Check Entitlements
+
     func checkEntitlements(appState: AppState) async {
         do {
             for await result in Transaction.currentEntitlements {
-                if case .verified(let transaction) = result,
-                   transaction.productID == Self.productID {
-                    appState.isPurchased = true
-                    return
+                if case .verified(let transaction) = result {
+                    if Self.allProductIDs.contains(transaction.productID) {
+                        appState.purchasedTiers.insert(transaction.productID)
+                    }
                 }
             }
         } catch {
-            print("⚠️ Failed to check entitlements: \(error.localizedDescription)")
+            // Silently fail on launch
         }
     }
+
+    // MARK: - Helpers
 
     private func scheduleErrorDismissal() {
         guard errorMessage != nil else { return }
