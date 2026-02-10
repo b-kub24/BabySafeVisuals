@@ -16,6 +16,7 @@ struct ParentMenuView: View {
                 VStack(spacing: 24) {
                     scenesSection
                     purchaseSection
+                    sessionTimerSection
                     settingsSection
                     guidedAccessSection
                     lockButton
@@ -160,6 +161,12 @@ struct ParentMenuView: View {
         }
     }
 
+    // MARK: - Session Timer
+    
+    private var sessionTimerSection: some View {
+        SessionTimerSettingsView()
+    }
+    
     // MARK: - Settings
 
     private var settingsSection: some View {
@@ -176,6 +183,83 @@ struct ParentMenuView: View {
                 )
                 .accessibilityLabel("Sound effects")
                 .accessibilityHint("Double tap to toggle sound on or off")
+            
+            nightModeSection
+        }
+    }
+    
+    // MARK: - Night Mode Section
+    
+    private var nightModeSection: some View {
+        @Bindable var state = appState
+        return VStack(spacing: 12) {
+            // Night Mode Preference Picker
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "moon.fill")
+                        .foregroundStyle(.indigo)
+                    Text("Night Mode")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    
+                    // Show current status when on Auto
+                    if state.nightModePreference == .auto {
+                        Text(state.isNightModeActive ? "Active" : "Inactive")
+                            .font(.caption)
+                            .foregroundStyle(state.isNightModeActive ? .indigo : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(state.isNightModeActive ? Color.indigo.opacity(0.15) : Color.gray.opacity(0.1))
+                            )
+                    }
+                }
+                
+                Picker("Night Mode", selection: $state.nightModePreference) {
+                    ForEach(NightModePreference.allCases, id: \.self) { preference in
+                        HStack {
+                            Image(systemName: preference.icon)
+                            Text(preference.displayName)
+                        }
+                        .tag(preference)
+                    }
+                }
+                .pickerStyle(.segmented)
+                
+                Text("Reduces brightness and uses warm colors for nighttime use")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            
+            // Red-Shift Filter Toggle (only visible when night mode can be active)
+            if state.nightModePreference != .off {
+                Toggle(isOn: $state.preserveNightVision) {
+                    HStack {
+                        Image(systemName: "eye")
+                            .foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Preserve Night Vision")
+                                .font(.subheadline.weight(.medium))
+                            Text("Adds red tint to protect eyes in darkness")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .accessibilityLabel("Preserve Night Vision")
+                .accessibilityHint("Adds a red filter to help maintain dark adaptation")
+            }
         }
     }
 
