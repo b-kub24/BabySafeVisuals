@@ -1,11 +1,32 @@
 import SwiftUI
 
 struct AuroraOrbsView: View {
+    @Environment(AppState.self) private var appState
     @State private var orbs: [AuroraOrb] = []
     @State private var lastUpdate: Date = .now
     @State private var touchPoint: CGPoint? = nil
 
     private let orbCount = 6
+    
+    // Night mode colors
+    private var backgroundGradient: [Color] {
+        appState.isNightModeActive ? NightModeColors.auroraGradient : [
+            Color(red: 0.02, green: 0.05, blue: 0.12),
+            Color(red: 0.04, green: 0.1, blue: 0.18),
+            Color(red: 0.02, green: 0.08, blue: 0.15)
+        ]
+    }
+    
+    private var orbColors: [Color] {
+        appState.isNightModeActive ? NightModeColors.auroraColors : [
+            Color(red: 0.2, green: 0.8, blue: 0.6),
+            Color(red: 0.3, green: 0.5, blue: 0.9),
+            Color(red: 0.6, green: 0.3, blue: 0.8),
+            Color(red: 0.2, green: 0.6, blue: 0.8),
+            Color(red: 0.4, green: 0.8, blue: 0.7),
+            Color(red: 0.5, green: 0.4, blue: 0.9)
+        ]
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -13,10 +34,13 @@ struct AuroraOrbsView: View {
                 Canvas { context, size in
                     let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
                     let time = timeline.date.timeIntervalSinceReferenceDate
+                    // Apply animation speed multiplier for night mode (slower movement)
+                    let speedMultiplier = appState.animationSpeedMultiplier
 
                     // Draw aurora bands
                     for orb in orbs {
-                        let phase = time * orb.speed + orb.phaseOffset
+                        // Slow down the phase animation in night mode
+                        let phase = time * orb.speed * speedMultiplier + orb.phaseOffset
                         let cx = orb.baseX + sin(phase) * orb.amplitudeX
                         let cy = orb.baseY + cos(phase * 0.7) * orb.amplitudeY
 
@@ -48,17 +72,13 @@ struct AuroraOrbsView: View {
                     }
 
                     DispatchQueue.main.async {
-                        updateOrbs(dt: dt, size: size)
+                        updateOrbs(dt: dt * speedMultiplier, size: size)
                         lastUpdate = timeline.date
                     }
                 }
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.02, green: 0.05, blue: 0.12),
-                            Color(red: 0.04, green: 0.1, blue: 0.18),
-                            Color(red: 0.02, green: 0.08, blue: 0.15)
-                        ],
+                        colors: backgroundGradient,
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -80,14 +100,7 @@ struct AuroraOrbsView: View {
     }
 
     private func initOrbs(size: CGSize) {
-        let colors: [Color] = [
-            Color(red: 0.2, green: 0.8, blue: 0.6),
-            Color(red: 0.3, green: 0.5, blue: 0.9),
-            Color(red: 0.6, green: 0.3, blue: 0.8),
-            Color(red: 0.2, green: 0.6, blue: 0.8),
-            Color(red: 0.4, green: 0.8, blue: 0.7),
-            Color(red: 0.5, green: 0.4, blue: 0.9),
-        ]
+        let colors = orbColors
 
         orbs = (0..<orbCount).map { i in
             AuroraOrb(

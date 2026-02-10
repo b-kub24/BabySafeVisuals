@@ -1,27 +1,49 @@
 import SwiftUI
 
 struct CalmStaticView: View {
+    @Environment(AppState.self) private var appState
     @State private var glowPoints: [GlowPoint] = []
     @State private var lastUpdate: Date = .now
+    
+    // Night mode colors
+    private var backgroundGradient: [Color] {
+        appState.isNightModeActive ? NightModeColors.calmStaticGradient : [
+            Color(red: 0.04, green: 0.04, blue: 0.08),
+            Color(red: 0.06, green: 0.06, blue: 0.12),
+            Color(red: 0.04, green: 0.04, blue: 0.1)
+        ]
+    }
+    
+    private var starColor: Color {
+        appState.isNightModeActive ? NightModeColors.calmStaticStarColor : .white
+    }
+    
+    private var glowColor: Color {
+        appState.isNightModeActive ? NightModeColors.calmStaticGlowColor : Color(red: 0.4, green: 0.5, blue: 0.8)
+    }
 
     var body: some View {
         GeometryReader { geo in
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 Canvas { context, size in
                     let time = timeline.date.timeIntervalSinceReferenceDate
-                    let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 15.0)
+                    let baseDt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 15.0)
+                    // Apply animation speed multiplier for night mode
+                    let dt = baseDt * appState.animationSpeedMultiplier
+                    let speedMultiplier = appState.animationSpeedMultiplier
 
-                    // Subtle stars
+                    // Subtle stars (twinkle slower in night mode)
                     for i in 0..<40 {
                         let seed = Double(i) * 137.5
                         let x = (seed.truncatingRemainder(dividingBy: Double(size.width)))
                         let y = ((seed * 2.3).truncatingRemainder(dividingBy: Double(size.height)))
-                        let twinkle = (sin(time * 0.5 + seed) + 1) / 2 * 0.4 + 0.1
+                        // Slower twinkle in night mode
+                        let twinkle = (sin(time * 0.5 * speedMultiplier + seed) + 1) / 2 * 0.4 + 0.1
                         let r = 1.0 + sin(seed) * 0.5
 
                         let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
                         context.opacity = twinkle
-                        context.fill(Circle().path(in: rect), with: .color(.white))
+                        context.fill(Circle().path(in: rect), with: .color(starColor))
                     }
 
                     // Touch glow points
@@ -32,8 +54,8 @@ struct CalmStaticView: View {
                         let alpha = (1.0 - progress) * 0.3
                         let radius = 40.0 + progress * 30.0
                         let gradient = Gradient(colors: [
-                            Color.white.opacity(alpha),
-                            Color(red: 0.4, green: 0.5, blue: 0.8).opacity(alpha * 0.5),
+                            starColor.opacity(alpha),
+                            glowColor.opacity(alpha * 0.5),
                             Color.clear
                         ])
 
@@ -65,11 +87,7 @@ struct CalmStaticView: View {
                 }
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.04, green: 0.04, blue: 0.08),
-                            Color(red: 0.06, green: 0.06, blue: 0.12),
-                            Color(red: 0.04, green: 0.04, blue: 0.1)
-                        ],
+                        colors: backgroundGradient,
                         startPoint: .top,
                         endPoint: .bottom
                     )

@@ -2,16 +2,36 @@ import SwiftUI
 
 struct BubblesView: View {
     @Environment(MotionManager.self) private var motion
+    @Environment(AppState.self) private var appState
     @State private var bubbles: [Bubble] = []
     @State private var lastUpdate: Date = .now
 
     private let maxBubbles = 30
+    
+    // Night mode colors
+    private var backgroundGradient: [Color] {
+        appState.isNightModeActive ? NightModeColors.bubblesGradient : [
+            Color(red: 0.06, green: 0.18, blue: 0.28),
+            Color(red: 0.08, green: 0.25, blue: 0.35),
+            Color(red: 0.06, green: 0.2, blue: 0.3)
+        ]
+    }
+    
+    private var rimColor: Color {
+        appState.isNightModeActive ? NightModeColors.bubblesRimColor : .white
+    }
+    
+    private var highlightColor: Color {
+        appState.isNightModeActive ? NightModeColors.bubblesRimColor : .white
+    }
 
     var body: some View {
         GeometryReader { geo in
             TimelineView(.animation) { timeline in
                 Canvas { context, size in
-                    let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
+                    // Apply animation speed multiplier for night mode
+                    let baseDt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
+                    let dt = baseDt * appState.animationSpeedMultiplier
 
                     for bubble in bubbles {
                         guard !bubble.isPopping else {
@@ -33,15 +53,15 @@ struct BubblesView: View {
                             with: .color(bubble.color)
                         )
 
-                        // Rim
+                        // Rim (warm color in night mode)
                         context.opacity = 0.4
                         context.stroke(
                             Circle().path(in: rect),
-                            with: .color(.white),
+                            with: .color(rimColor),
                             lineWidth: 1
                         )
 
-                        // Highlight
+                        // Highlight (warm color in night mode)
                         let highlightSize = bubble.radius * 0.3
                         let highlightRect = CGRect(
                             x: bubble.x - bubble.radius * 0.3,
@@ -52,7 +72,7 @@ struct BubblesView: View {
                         context.opacity = 0.5
                         context.fill(
                             Ellipse().path(in: highlightRect),
-                            with: .color(.white)
+                            with: .color(highlightColor)
                         )
                     }
 
@@ -63,11 +83,7 @@ struct BubblesView: View {
                 }
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.06, green: 0.18, blue: 0.28),
-                            Color(red: 0.08, green: 0.25, blue: 0.35),
-                            Color(red: 0.06, green: 0.2, blue: 0.3)
-                        ],
+                        colors: backgroundGradient,
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -103,7 +119,7 @@ struct BubblesView: View {
 
     private func initBubbles(size: CGSize) {
         bubbles = (0..<15).map { _ in
-            Bubble.random(in: size)
+            Bubble.random(in: size, isNightMode: appState.isNightModeActive)
         }
     }
 
@@ -111,9 +127,10 @@ struct BubblesView: View {
         let tiltX = motion.tiltX
         let shake = motion.shakeIntensity
 
-        // Spawn
-        if bubbles.count < maxBubbles && Double.random(in: 0...1) < 0.03 {
-            bubbles.append(Bubble.random(in: size, fromBottom: true))
+        // Spawn (slower spawn rate in night mode)
+        let spawnChance = appState.isNightModeActive ? 0.02 : 0.03
+        if bubbles.count < maxBubbles && Double.random(in: 0...1) < spawnChance {
+            bubbles.append(Bubble.random(in: size, fromBottom: true, isNightMode: appState.isNightModeActive))
         }
 
         for i in bubbles.indices {
@@ -183,13 +200,15 @@ private struct Bubble: Identifiable {
     var popProgress: Double = 0
     var popAngleOffset: Double = 0
 
-    static func random(in size: CGSize, fromBottom: Bool = false) -> Bubble {
-        let colors: [Color] = [
+    static func random(in size: CGSize, fromBottom: Bool = false, isNightMode: Bool = false) -> Bubble {
+        let dayColors: [Color] = [
             Color(red: 0.5, green: 0.8, blue: 0.95),
             Color(red: 0.6, green: 0.85, blue: 0.9),
             Color(red: 0.4, green: 0.75, blue: 0.9),
             Color(red: 0.55, green: 0.7, blue: 0.95),
         ]
+        let colors = isNightMode ? NightModeColors.bubbleColors : dayColors
+        
         return Bubble(
             x: Double.random(in: 0...Double(size.width)),
             y: fromBottom ? Double(size.height) + 20 : Double.random(in: 0...Double(size.height)),
