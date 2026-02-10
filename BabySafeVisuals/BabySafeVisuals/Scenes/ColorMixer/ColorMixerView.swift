@@ -1,15 +1,24 @@
 import SwiftUI
 
 struct ColorMixerView: View {
+    @Environment(AppState.self) private var appState
     @State private var touches: [TouchBlob] = []
 
-    private let blobColors: [Color] = [
+    private let dayBlobColors: [Color] = [
         Color(red: 0.9, green: 0.3, blue: 0.4),
         Color(red: 0.3, green: 0.5, blue: 0.9),
         Color(red: 0.3, green: 0.8, blue: 0.5),
         Color(red: 0.9, green: 0.7, blue: 0.2),
         Color(red: 0.7, green: 0.3, blue: 0.9),
     ]
+    
+    private var blobColors: [Color] {
+        appState.isNightModeActive ? NightModeColors.colorMixerColors : dayBlobColors
+    }
+    
+    private var backgroundColor: Color {
+        appState.isNightModeActive ? NightModeColors.colorMixerBackground : Color(red: 0.12, green: 0.1, blue: 0.18)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -43,9 +52,7 @@ struct ColorMixerView: View {
                         }
                     }
                 }
-                .background(
-                    Color(red: 0.12, green: 0.1, blue: 0.18)
-                )
+                .background(backgroundColor)
             }
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -73,10 +80,13 @@ struct ColorMixerView: View {
     }
 
     private func updateTouch(id: Int, at point: CGPoint) {
+        // Apply animation speed multiplier for smoother movement in night mode
+        let interpolationSpeed = 0.3 * appState.animationSpeedMultiplier
+        
         if let index = touches.firstIndex(where: { $0.id == id }) {
-            // Smooth interpolation toward new position
-            touches[index].x += (Double(point.x) - touches[index].x) * 0.3
-            touches[index].y += (Double(point.y) - touches[index].y) * 0.3
+            // Smooth interpolation toward new position (slower in night mode)
+            touches[index].x += (Double(point.x) - touches[index].x) * interpolationSpeed
+            touches[index].y += (Double(point.y) - touches[index].y) * interpolationSpeed
             touches[index].opacity = min(touches[index].opacity + 0.05, 0.85)
         } else {
             touches.append(TouchBlob(

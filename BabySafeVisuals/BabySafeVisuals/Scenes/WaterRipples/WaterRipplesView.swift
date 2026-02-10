@@ -1,8 +1,27 @@
 import SwiftUI
 
 struct WaterRipplesView: View {
+    @Environment(AppState.self) private var appState
     @State private var ripples: [Ripple] = []
     private let maxRipples = 12
+    
+    // Night mode colors
+    private var backgroundGradient: [Color] {
+        appState.isNightModeActive ? NightModeColors.waterRipplesGradient : [
+            Color(red: 0.05, green: 0.15, blue: 0.3),
+            Color(red: 0.08, green: 0.22, blue: 0.38),
+            Color(red: 0.05, green: 0.18, blue: 0.32)
+        ]
+    }
+    
+    private var rippleColors: [Color] {
+        appState.isNightModeActive ? NightModeColors.waterRippleColors : [
+            Color(red: 0.4, green: 0.7, blue: 0.9),
+            Color(red: 0.3, green: 0.6, blue: 0.85),
+            Color(red: 0.5, green: 0.75, blue: 0.95),
+            Color(red: 0.35, green: 0.65, blue: 0.88)
+        ]
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -12,7 +31,9 @@ struct WaterRipplesView: View {
 
                     for ripple in ripples {
                         let elapsed = now - ripple.startTime
-                        let progress = elapsed / ripple.duration
+                        // Apply animation speed multiplier for night mode
+                        let adjustedDuration = ripple.duration / appState.animationSpeedMultiplier
+                        let progress = elapsed / adjustedDuration
                         guard progress < 1.0 else { continue }
 
                         let maxRadius = min(size.width, size.height) * 0.4
@@ -41,16 +62,16 @@ struct WaterRipplesView: View {
                     }
 
                     DispatchQueue.main.async {
-                        ripples.removeAll { now - $0.startTime >= $0.duration }
+                        let speedMultiplier = appState.animationSpeedMultiplier
+                        ripples.removeAll { 
+                            let adjustedDuration = $0.duration / speedMultiplier
+                            return now - $0.startTime >= adjustedDuration 
+                        }
                     }
                 }
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.05, green: 0.15, blue: 0.3),
-                            Color(red: 0.08, green: 0.22, blue: 0.38),
-                            Color(red: 0.05, green: 0.18, blue: 0.32)
-                        ],
+                        colors: backgroundGradient,
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -80,19 +101,12 @@ struct WaterRipplesView: View {
             if sqrt(dx * dx + dy * dy) < 20 { return }
         }
 
-        let colors: [Color] = [
-            Color(red: 0.4, green: 0.7, blue: 0.9),
-            Color(red: 0.3, green: 0.6, blue: 0.85),
-            Color(red: 0.5, green: 0.75, blue: 0.95),
-            Color(red: 0.35, green: 0.65, blue: 0.88),
-        ]
-
         ripples.append(Ripple(
             x: Double(point.x),
             y: Double(point.y),
             startTime: Date.now.timeIntervalSinceReferenceDate,
             duration: Double.random(in: 3...5),
-            color: colors.randomElement() ?? .cyan
+            color: rippleColors.randomElement() ?? .cyan
         ))
     }
 }

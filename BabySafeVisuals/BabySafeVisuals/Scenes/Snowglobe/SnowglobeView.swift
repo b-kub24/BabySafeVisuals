@@ -2,17 +2,33 @@ import SwiftUI
 
 struct SnowglobeView: View {
     @Environment(MotionManager.self) private var motion
+    @Environment(AppState.self) private var appState
     @State private var particles: [SnowParticle] = []
     @State private var lastUpdate: Date = .now
 
     private let maxParticles = 400
     private let spawnRate = 3
+    
+    // Night mode colors
+    private var particleColor: Color {
+        appState.isNightModeActive ? NightModeColors.snowglobeParticleColor : .white
+    }
+    
+    private var backgroundGradient: [Color] {
+        appState.isNightModeActive ? NightModeColors.snowglobeGradient : [
+            Color(red: 0.08, green: 0.12, blue: 0.25),
+            Color(red: 0.15, green: 0.2, blue: 0.35),
+            Color(red: 0.1, green: 0.15, blue: 0.3)
+        ]
+    }
 
     var body: some View {
         GeometryReader { geo in
             TimelineView(.animation) { timeline in
                 Canvas { context, size in
-                    let dt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
+                    // Apply animation speed multiplier for night mode
+                    let baseDt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
+                    let dt = baseDt * appState.animationSpeedMultiplier
 
                     for particle in particles {
                         let opacity = particle.opacity * (1.0 - particle.age / particle.lifetime)
@@ -26,7 +42,7 @@ struct SnowglobeView: View {
                         context.opacity = opacity
                         context.fill(
                             Circle().path(in: rect),
-                            with: .color(.white)
+                            with: .color(particleColor)
                         )
                     }
 
@@ -37,11 +53,7 @@ struct SnowglobeView: View {
                 }
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.08, green: 0.12, blue: 0.25),
-                            Color(red: 0.15, green: 0.2, blue: 0.35),
-                            Color(red: 0.1, green: 0.15, blue: 0.3)
-                        ],
+                        colors: backgroundGradient,
                         startPoint: .top,
                         endPoint: .bottom
                     )
