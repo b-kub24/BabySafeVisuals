@@ -213,7 +213,7 @@ private struct Bubble: Identifiable {
             x: Double.random(in: 0...Double(size.width)),
             y: fromBottom ? Double(size.height) + 20 : Double.random(in: 0...Double(size.height)),
             vx: Double.random(in: -5...5),
-            vy: Double.random(in: -15...-5),
+            vy: Double.random(in: -15 ... -5),
             radius: Double.random(in: 15...40),
             color: colors.randomElement() ?? .cyan,
             wobbleFreq: Double.random(in: 0.5...2.0),
