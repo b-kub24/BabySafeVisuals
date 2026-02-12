@@ -5,6 +5,7 @@ struct SnowglobeView: View {
     @Environment(AppState.self) private var appState
     @State private var particles: [SnowParticle] = []
     @State private var lastUpdate: Date = .now
+    @State private var isInitialized = false
 
     private let maxParticles = 400
     private let spawnRate = 3
@@ -14,53 +15,93 @@ struct SnowglobeView: View {
         appState.isNightModeActive ? NightModeColors.snowglobeParticleColor : .white
     }
     
+    private var secondaryParticleColor: Color {
+        appState.isNightModeActive ? NightModeColors.snowglobeParticleColor.opacity(0.7) : Color(red: 0.7, green: 0.85, blue: 1.0)
+    }
+    
     private var backgroundGradient: [Color] {
         appState.isNightModeActive ? NightModeColors.snowglobeGradient : [
-            Color(red: 0.08, green: 0.12, blue: 0.25),
-            Color(red: 0.15, green: 0.2, blue: 0.35),
-            Color(red: 0.1, green: 0.15, blue: 0.3)
+            Color(red: 0.05, green: 0.08, blue: 0.2),
+            Color(red: 0.1, green: 0.15, blue: 0.35),
+            Color(red: 0.15, green: 0.2, blue: 0.4)
         ]
     }
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation) { timeline in
-                Canvas { context, size in
-                    // Apply animation speed multiplier for night mode
-                    let baseDt = min(timeline.date.timeIntervalSince(lastUpdate), 1.0 / 30.0)
-                    let dt = baseDt * appState.animationSpeedMultiplier
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    colors: backgroundGradient,
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                
+                TimelineView(.animation) { timeline in
+                    Canvas { context, size in
+                        let now = timeline.date
+                        let baseDt = min(now.timeIntervalSince(lastUpdate), 1.0 / 30.0)
+                        let dt = baseDt * appState.animationSpeedMultiplier
 
-                    for particle in particles {
-                        let opacity = particle.opacity * (1.0 - particle.age / particle.lifetime)
-                        guard opacity > 0 else { continue }
-                        let rect = CGRect(
-                            x: particle.x - particle.radius,
-                            y: particle.y - particle.radius,
-                            width: particle.radius * 2,
-                            height: particle.radius * 2
-                        )
-                        context.opacity = opacity
-                        context.fill(
-                            Circle().path(in: rect),
-                            with: .color(particleColor)
-                        )
-                    }
+                        // Draw each snowflake
+                        for particle in particles {
+                            let lifeFraction = particle.age / particle.lifetime
+                            guard lifeFraction < 1.0 else { continue }
+                            
+                            // Fade in at start, fade out at end
+                            let fadeIn = min(particle.age / 0.5, 1.0)
+                            let fadeOut = 1.0 - max((lifeFraction - 0.8) / 0.2, 0.0)
+                            let opacity = particle.opacity * fadeIn * fadeOut
+                            guard opacity > 0.01 else { continue }
+                            
+                            let rect = CGRect(
+                                x: particle.x - particle.radius,
+                                y: particle.y - particle.radius,
+                                width: particle.radius * 2,
+                                height: particle.radius * 2
+                            )
+                            
+                            // Alternate white and light blue snowflakes
+                            let color = particle.isBlue ? secondaryParticleColor : particleColor
+                            
+                            context.opacity = opacity
+                            
+                            // Larger particles get a soft glow
+                            if particle.radius > 2.5 {
+                                let glowRect = CGRect(
+                                    x: particle.x - particle.radius * 2,
+                                    y: particle.y - particle.radius * 2,
+                                    width: particle.radius * 4,
+                                    height: particle.radius * 4
+                                )
+                                context.opacity = opacity * 0.15
+                                context.fill(
+                                    Circle().path(in: glowRect),
+                                    with: .color(color)
+                                )
+                                context.opacity = opacity
+                            }
+                            
+                            context.fill(
+                                Circle().path(in: rect),
+                                with: .color(color)
+                            )
+                        }
 
-                    DispatchQueue.main.async {
-                        updateParticles(dt: dt, size: size)
-                        lastUpdate = timeline.date
+                        DispatchQueue.main.async {
+                            updateParticles(dt: dt, size: size)
+                            lastUpdate = now
+                        }
                     }
                 }
-                .background(
-                    LinearGradient(
-                        colors: backgroundGradient,
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
             }
             .onAppear {
-                initParticles(size: geo.size)
+                if !isInitialized {
+                    initParticles(size: geo.size)
+                    lastUpdate = .now
+                    isInitialized = true
+                }
             }
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -156,6 +197,7 @@ struct SnowParticle {
     var age: Double
     var lifetime: Double
     var driftFreq: Double
+    var isBlue: Bool
 
     static func random(in size: CGSize, existingAge: Bool) -> SnowParticle {
         SnowParticle(
@@ -163,11 +205,12 @@ struct SnowParticle {
             y: existingAge ? Double.random(in: 0...Double(size.height)) : Double.random(in: -20...0),
             vx: Double.random(in: -10...10),
             vy: Double.random(in: 5...25),
-            radius: Double.random(in: 1...4),
-            opacity: Double.random(in: 0.3...0.9),
+            radius: Double.random(in: 1...5),
+            opacity: Double.random(in: 0.4...1.0),
             age: existingAge ? Double.random(in: 0...15) : 0,
             lifetime: Double.random(in: 15...30),
-            driftFreq: Double.random(in: 0.5...2.0)
+            driftFreq: Double.random(in: 0.5...2.0),
+            isBlue: Bool.random()
         )
     }
 }

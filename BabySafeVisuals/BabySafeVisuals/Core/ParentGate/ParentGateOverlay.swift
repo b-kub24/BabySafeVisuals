@@ -11,7 +11,7 @@ struct ParentGateOverlay: View {
     @State private var mathB: Int = 0
     @State private var mathAnswer: String = ""
 
-    private let holdDuration: Double = 6.0
+    private let holdDuration: Double = 3.0
     private let timerInterval: Double = 1.0 / 60.0
 
     private var hotspotSize: CGFloat {
@@ -22,6 +22,29 @@ struct ParentGateOverlay: View {
         GeometryReader { geo in
             ZStack(alignment: .topTrailing) {
                 Color.clear
+
+                // Thin progress bar across top of screen
+                if isHolding {
+                    VStack {
+                        GeometryReader { barGeo in
+                            Rectangle()
+                                .fill(Color.white.opacity(0.25))
+                                .frame(width: barGeo.size.width * holdProgress, height: 3)
+                                .animation(.linear(duration: timerInterval), value: holdProgress)
+                        }
+                        .frame(height: 3)
+                        .padding(.top, geo.safeAreaInsets.top)
+                        Spacer()
+                    }
+                }
+
+                // Subtle gear icon in upper-right
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.white.opacity(0.15))
+                    .padding(.top, geo.safeAreaInsets.top > 0 ? 12 : 16)
+                    .padding(.trailing, 16)
+                    .allowsHitTesting(false)
 
                 hotspotArea
                     .padding(.top, geo.safeAreaInsets.top > 0 ? 4 : 8)
@@ -70,7 +93,7 @@ struct ParentGateOverlay: View {
             }
         }
         .accessibilityLabel("Parent Gate")
-        .accessibilityHint("Press and hold for 6 seconds to access parent controls")
+        .accessibilityHint("Press and hold for 3 seconds to access parent controls")
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in

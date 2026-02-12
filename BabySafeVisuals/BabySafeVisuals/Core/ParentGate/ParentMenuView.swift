@@ -16,11 +16,11 @@ struct ParentMenuView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     scenesSection
+                    startSceneButton
                     purchaseSection
                     sessionTimerSection
                     settingsSection
                     guidedAccessSection
-                    lockButton
                 }
                 .padding(20)
             }
@@ -298,25 +298,26 @@ struct ParentMenuView: View {
         }
     }
 
-    // MARK: - Lock Button
+    // MARK: - Start Scene Button
 
-    private var lockButton: some View {
+    private var startSceneButton: some View {
         Button {
             appState.lockParentMode()
         } label: {
-            HStack {
-                Image(systemName: "lock.fill")
-                Text("Lock")
+            HStack(spacing: 10) {
+                Image(systemName: "play.fill")
+                    .font(.title3)
+                Text("Start Scene")
+                    .font(.title3)
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color(.systemGray5))
-            .foregroundStyle(.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.vertical, 16)
+            .background(Color.blue)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .padding(.top, 8)
-        .accessibilityLabel("Lock and return to scene")
-        .accessibilityHint("Double tap to close parent menu and return to the active scene")
+        .accessibilityLabel("Start scene and lock")
+        .accessibilityHint("Double tap to start the selected scene and lock the screen")
     }
 }
