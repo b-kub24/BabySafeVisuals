@@ -6,6 +6,8 @@ struct ParentMenuView: View {
     @State private var purchaseManager = PurchaseManager()
     @State private var showGuidedAccessHelp = false
     @State private var guidedAccessEnabled = GuidedAccessStatus.isEnabled
+    @State private var showScenePreviewPicker = false
+    @State private var previewingScene: SceneID? = nil
 
     private let columns = [
         GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)
@@ -20,6 +22,7 @@ struct ParentMenuView: View {
                     purchaseSection
                     sessionTimerSection
                     settingsSection
+                    sceneTestSection
                     guidedAccessSection
                 }
                 .padding(20)
@@ -36,6 +39,11 @@ struct ParentMenuView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.guidedAccessStatusDidChangeNotification)) { _ in
                 guidedAccessEnabled = GuidedAccessStatus.isEnabled
+            }
+            .fullScreenCover(item: $previewingScene) { scene in
+                ScenePreviewView(scene: scene) {
+                    previewingScene = nil
+                }
             }
         }
     }
@@ -260,6 +268,45 @@ struct ParentMenuView: View {
                 )
                 .accessibilityLabel("Preserve Night Vision")
                 .accessibilityHint("Adds a red filter to help maintain dark adaptation")
+            }
+        }
+    }
+
+    // MARK: - Scene Test (30-Second Preview)
+
+    private var sceneTestSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Test Scenes")
+                .font(.headline)
+
+            Text("Preview any scene for 30 seconds")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(SceneID.allCases) { scene in
+                    Button {
+                        previewingScene = scene
+                    } label: {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(scene.previewColor)
+                                    .frame(height: 60)
+
+                                Image(systemName: "play.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+
+                            Text(scene.displayName)
+                                .font(.caption2)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .accessibilityLabel("Test \(scene.displayName) for 30 seconds")
+                }
             }
         }
     }

@@ -33,6 +33,10 @@ final class AppState {
     static let TESTING_MODE = false
     #endif
     
+    // Scene preview mode (30-second test from parent menu)
+    var isPreviewingScene: Bool = false
+    var previewScene: SceneID? = nil
+    
     var activeScene: SceneID {
         didSet {
             UserDefaults.standard.set(activeScene.rawValue, forKey: "activeScene")
