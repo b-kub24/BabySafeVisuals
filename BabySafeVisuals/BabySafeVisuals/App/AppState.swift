@@ -28,7 +28,7 @@ enum NightModePreference: String, CaseIterable {
 final class AppState {
     // ⚠️ TESTING MODE: Only available in DEBUG builds
     #if DEBUG
-    static let TESTING_MODE = false
+    static let TESTING_MODE = true
     #else
     static let TESTING_MODE = false
     #endif
