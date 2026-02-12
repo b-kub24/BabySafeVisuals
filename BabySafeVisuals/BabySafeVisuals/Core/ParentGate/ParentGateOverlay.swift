@@ -6,6 +6,10 @@ struct ParentGateOverlay: View {
     @State private var holdProgress: Double = 0
     @State private var isHolding: Bool = false
     @State private var holdTimer: Timer?
+    @State private var showMathChallenge: Bool = false
+    @State private var mathA: Int = 0
+    @State private var mathB: Int = 0
+    @State private var mathAnswer: String = ""
 
     private let holdDuration: Double = 6.0
     private let timerInterval: Double = 1.0 / 60.0
@@ -25,6 +29,24 @@ struct ParentGateOverlay: View {
             }
         }
         .ignoresSafeArea()
+        .onDisappear {
+            cancelHold()
+        }
+        .alert("Parent Verification", isPresented: $showMathChallenge) {
+            TextField("Answer", text: $mathAnswer)
+                .keyboardType(.numberPad)
+            Button("Verify") {
+                if let answer = Int(mathAnswer), answer == mathA * mathB {
+                    appState.parentUnlocked = true
+                }
+                mathAnswer = ""
+            }
+            Button("Cancel", role: .cancel) {
+                mathAnswer = ""
+            }
+        } message: {
+            Text("What is \(mathA) × \(mathB)?")
+        }
     }
 
     private var hotspotArea: some View {
@@ -85,6 +107,13 @@ struct ParentGateOverlay: View {
         holdProgress = 0
     }
 
+    private func generateMathChallenge() {
+        mathA = Int.random(in: 5...12)
+        mathB = Int.random(in: 5...12)
+        mathAnswer = ""
+        showMathChallenge = true
+    }
+
     private func authenticateParent() {
         let context = LAContext()
         var error: NSError?
@@ -101,8 +130,8 @@ struct ParentGateOverlay: View {
                 }
             }
         } else {
-            // No biometrics or passcode available - allow access after hold
-            appState.parentUnlocked = true
+            // No biometrics or passcode available - use math challenge fallback
+            generateMathChallenge()
         }
     }
 }

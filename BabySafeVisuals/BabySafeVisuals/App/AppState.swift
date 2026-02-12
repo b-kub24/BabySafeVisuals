@@ -26,9 +26,12 @@ enum NightModePreference: String, CaseIterable {
 
 @Observable
 final class AppState {
-    // ⚠️ TESTING MODE: Set to true to unlock all scenes without purchase
-    // IMPORTANT: Set back to false before submitting to App Store!
+    // ⚠️ TESTING MODE: Only available in DEBUG builds
+    #if DEBUG
     static let TESTING_MODE = false
+    #else
+    static let TESTING_MODE = false
+    #endif
     
     var activeScene: SceneID {
         didSet {
@@ -97,6 +100,9 @@ final class AppState {
     }
 
     init() {
+        // Register defaults so sound is ON for first launch
+        UserDefaults.standard.register(defaults: ["soundEnabled": true])
+        
         let savedScene = UserDefaults.standard.string(forKey: "activeScene") ?? SceneID.snowglobe.rawValue
         self.activeScene = SceneID(rawValue: savedScene) ?? .snowglobe
         self.soundEnabled = UserDefaults.standard.bool(forKey: "soundEnabled")

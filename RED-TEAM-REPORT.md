@@ -1,469 +1,301 @@
-# 🔴 BabySafeVisuals - Red Team Security Analysis
+# 🔴 Red Team Report — BabySafe Visuals
 
-**Generated:** 2026-02-10 05:15 UTC  
-**Reviewed By:** Claude (Subagent)  
-**Status:** READY FOR TESTFLIGHT (with documented risks)
+**Date:** 2026-02-11  
+**Reviewer:** Automated adversarial analysis  
+**Codebase:** `/home/ubuntu/clawd/BabySafeVisuals/`  
+**Scope:** Security, edge cases, UX, code quality, App Store compliance
 
 ---
 
-## 🚨 CRITICAL SECURITY ISSUES
+## 1. Security Review
 
-### 1. **Parent Gate Bypass on Devices Without Passcode/Biometrics**
+### 🔴 CRITICAL: Parent Gate Bypass (No Biometrics Fallback)
 
-**Severity:** 🔴 **CRITICAL**  
-**File:** `ParentGateOverlay.swift` lines 86-95
+**File:** `ParentGateOverlay.swift`, line ~95–97
 
-**Issue:**
 ```swift
-if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-    // ... authenticate
 } else {
     // No biometrics or passcode available - allow access after hold
     appState.parentUnlocked = true
 }
 ```
 
-**Risk:**  
-If a device has **no passcode, Face ID, or Touch ID configured**, the parent gate grants access after only a 6-second hold. A determined child (age 3+) can discover this and bypass security.
+**Issue:** If the device has no passcode/biometrics configured (e.g., a shared family iPad with no passcode), a child who holds the invisible hotspot for 6 seconds gets **full parent access** with zero authentication. This completely defeats the Parent Gate.
 
-**Attack Vector:**
-1. Child holds top-right corner for 6 seconds
-2. Device has no passcode set (e.g., used iPad, factory reset, etc.)
-3. Parent menu opens immediately without authentication
+**Severity:** 🔴 CRITICAL — Violates COPPA and Apple Kids Category requirements.
 
-**Real-World Likelihood:** **MEDIUM**
-- Unlikely on personal devices (most have passcodes)
-- Higher risk on shared family devices or old iPads
-- Apple's default setup flow encourages passcodes, but not required
+**Fix:** If `canEvaluatePolicy` fails, show a **math problem** or **text-based challenge** (e.g., "Spell the word shown: PARENT") instead of auto-granting access. Apple specifically recommends this in their Kids Category guidelines.
 
-**Recommendation:**
-- **Detect this condition on app launch** and show a warning to parents
-- Add in-app message: "⚠️ For maximum security, enable a passcode or Face ID/Touch ID"
-- Consider requiring **biometric setup** before unlocking premium features
-- Alternative: **Increase hold time to 10+ seconds** if no auth available
+### 🟡 MEDIUM: Parent Gate Hotspot is Discoverable
 
-**App Store Risk:** **LOW** - Not a rejection reason (apps can't enforce device security), but document it in review notes.
+The 6-second hold target is invisible but always in the **top-right corner** (fixed position). A curious toddler repeatedly touching the screen will eventually discover and activate it. The 6-second hold is a reasonable barrier for very young children but may not stop a 4–5 year old.
+
+**Recommendation:** Consider requiring a **two-step gesture** (e.g., hold + swipe pattern) or randomizing the hotspot location.
+
+### ✅ IAP Security — Properly Implemented
+
+- Uses StoreKit 2 with proper `Transaction` verification (`.verified` vs `.unverified`)
+- Unverified purchases are rejected (catches jailbreak receipt manipulation)
+- `isPurchased` is persisted via `UserDefaults` (not a security concern since StoreKit re-validates on launch via `checkEntitlements`)
+- Restore purchases correctly iterates `Transaction.currentEntitlements`
+- `Ask to Buy` (pending) state handled properly
+
+**Minor note:** `isPurchased` in UserDefaults could theoretically be flipped by a jailbroken device editing the plist. However, since `checkEntitlements` runs on every Parent Menu open, this self-corrects. Acceptable risk.
+
+### 🟡 MEDIUM: TESTING_MODE Flag
+
+**File:** `AppState.swift`, line 28
+
+```swift
+static let TESTING_MODE = false
+```
+
+This flag, if accidentally set to `true`, unlocks all premium scenes for free. It's currently `false` but:
+- No build configuration guard (`#if DEBUG`)
+- No CI check to catch it
+- Comment says "Set back to false before submitting" — human error risk
+
+**Fix:** Replace with:
+```swift
+#if DEBUG
+static let TESTING_MODE = true
+#else
+static let TESTING_MODE = false
+#endif
+```
+
+### ✅ Data Privacy & COPPA Compliance
+
+**Data collected:** NONE externally. The app:
+- Stores preferences in `UserDefaults` (local only): active scene, sound toggle, purchase status, night mode, timer settings
+- Uses `CoreMotion` (device tilt/shake) — processed locally, never transmitted
+- Uses `LocalAuthentication` (Face ID/Touch ID) — biometric data stays on device
+- **No analytics SDKs, no network calls, no tracking, no user accounts**
+- **No photos, camera, microphone, or contacts access**
+
+**COPPA Assessment:** ✅ COMPLIANT — No personal data collection from children. No third-party SDKs. No advertising. No social features.
+
+**Info.plist usage descriptions are accurate:**
+- `NSMotionUsageDescription` ✅
+- `NSFaceIDUsageDescription` ✅
 
 ---
 
-### 2. **No Enforcement of Guided Access Mode**
+## 2. Edge Cases
 
-**Severity:** 🟡 **MEDIUM**  
-**Files:** `AppContainerView.swift`, `ParentMenuView.swift`
+### 🟢 Device Rotation
 
-**Issue:**  
-The app **strongly recommends** Guided Access but doesn't enforce it. Without Guided Access enabled:
-- Home button/swipe exits the app
-- Control Center is accessible (camera, other apps)
-- Notifications can interrupt
-- Multitasking switcher is accessible
+All scenes use `GeometryReader` and `Canvas` with dynamic `size` parameters. Particles and positions are relative to `CGSize`, so rotation is handled correctly. The app uses `.ignoresSafeArea()` properly.
 
-**Attack Vector:**
-1. Parent hands device to child without enabling Guided Access
-2. Child swipes up → exits to home screen → full device access
+**Verdict:** ✅ Handled
 
-**Real-World Likelihood:** **HIGH**  
-Parents WILL forget to enable Guided Access.
+### 🟡 Low Memory Situations
 
-**Current Mitigation:**
-- App shows Guided Access status in Parent Menu
-- Includes helpful instructions via `GuidedAccessHelpView`
-- Visual indicator (green checkmark) when enabled
+**Potential issue:** The Snowglobe scene maintains up to **400+ particles** (`maxParticles = 400` + burst of 50 on touch). Each `SnowParticle` is a struct (~88 bytes), so worst case ~40KB. Bubbles cap at 30. This is fine.
 
-**Recommendations:**
-- ✅ **Already handled well** - detection and education present
-- **Consider:** Show a **one-time splash screen** on first launch explaining Guided Access
-- **Consider:** Add an **in-scene badge** when Guided Access is OFF (e.g., small orange dot)
-- **Cannot fix programmatically** - iOS doesn't allow apps to enable Guided Access
+However, `Canvas` redraws every frame via `TimelineView(.animation)` — this is GPU-intensive. Under memory pressure:
+- No `didReceiveMemoryWarning` handling
+- No particle count reduction logic
+- No frame rate throttling
 
-**App Store Risk:** **NONE** - This is expected behavior. Document in review notes.
+**Recommendation:** Add `NotificationCenter` observer for `UIApplication.didReceiveMemoryWarningNotification` to reduce `maxParticles` temporarily.
 
----
+### ✅ Phone Call / App Interruption
 
-### 3. **Interruptions Can Pause the App Without Parent Lock**
-
-**Severity:** 🟡 **MEDIUM**  
 **File:** `BabySafeVisualsApp.swift`
 
-**Issue:**  
-When the app receives interruptions (phone call, FaceTime, alarm, low battery alert), it pauses motion updates but **does not automatically lock the parent gate**.
-
-**Current Behavior:**
 ```swift
 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
     motionManager.stopUpdates()
+    appState.lockParentMode()
+}
+.onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+    motionManager.startUpdates()
 }
 ```
 
-**Attack Vector:**
-1. Child is using the app
-2. Parent receives a phone call → app backgrounds
-3. Parent answers call, then returns to app
-4. If parent previously unlocked settings, `parentUnlocked` state persists
+**Excellent:** Motion updates stop on interruption, parent mode auto-locks. On resume, motion restarts. This is correct behavior.
 
-**Real-World Likelihood:** **LOW**  
-State resets on app restart, but could persist across interruptions in the same session.
+### 🟢 No Internet Connection
 
-**Recommendation:**
-Add this to `BabySafeVisualsApp.swift`:
-```swift
-.onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-    motionManager.stopUpdates()
-    appState.lockParentMode() // Add this line
-}
-```
+The app works **100% offline**. The only network dependency is StoreKit (IAP product loading), which:
+- Shows clear error: "No internet connection. Please try again later."
+- Falls back gracefully — free scenes still work
+- `checkEntitlements` silently fails (doesn't block the app)
 
-**App Store Risk:** **NONE**
+**Verdict:** ✅ Fully functional offline
+
+### 🟢 Accessibility (VoiceOver)
+
+Good accessibility implementation throughout:
+- `ParentGateOverlay`: `accessibilityLabel("Parent Gate")` + hint for 6-second hold ✅
+- `ParentMenuView`: All scene cells have proper labels with state (active/locked/free/premium) ✅
+- Purchase button: Announces price ✅
+- All toggles: Custom labels and hints ✅
+- `SessionTimerSettingsView`: Duration buttons, start/stop all labeled ✅
+- `GuidedAccessHelpView`: Structured content ✅
+
+**One issue:** The `SessionTimerOverlayView` completion screen ("Time for cuddles!") dismisses on tap but has no VoiceOver accessibility label on the dismiss action.
 
 ---
 
-## ⚠️ EDGE CASES & CRASH RISKS
+## 3. User Experience
 
-### 4. **Device Rotation During Parent Gate Hold**
+### ✅ First-Time User Flow
 
-**Severity:** 🟢 **LOW**  
+1. App launches directly into Snowglobe (free scene) — immediate visual engagement ✅
+2. No onboarding tutorial (appropriate for a baby-facing app)
+3. Parent Gate is discoverable via accessibility hint but otherwise invisible — good
+4. Parent Menu is clean, well-organized with clear sections
+
+**Assessment:** Intuitive. Baby sees visuals immediately. Parent can find settings via hold gesture.
+
+### ✅ Error Messages
+
+- IAP errors are user-friendly and specific (network, region, permissions, verification)
+- "Product not found" message guides toward App Store Connect
+- User cancellation shows no error (correct behavior)
+- "Ask to Buy" pending state explained
+
+### 🟡 Loading States
+
+- `PurchaseManager` has `isLoading` with `ProgressView()` ✅
+- However, initial product load (`loadProduct()`) has no loading indicator — if slow, the purchase button simply doesn't appear
+- No skeleton/placeholder for the purchase section during load
+
+### 🟡 Session Timer UX
+
+- The "Time for cuddles!" completion screen says "Tap anywhere to dismiss" — but a **baby** will tap and dismiss it. The parent gate should be required to dismiss the timer completion or extend.
+- Wind-down dimming is a nice touch
+
+---
+
+## 4. Code Quality
+
+### 🟡 Potential Retain Cycle in Timer
+
 **File:** `ParentGateOverlay.swift`
 
-**Issue:**  
-Parent gate uses fixed geometry (`GeometryReader`) for the top-right hotspot. If the device rotates mid-hold, the hotspot may shift or reset the timer.
-
-**Test Results Needed:**
-- ❓ Does rotation cancel the hold timer?
-- ❓ Does the hotspot stay in the top-right after rotation?
-
-**Recommendation:**
-- Test on iPad in landscape/portrait rotation
-- Consider locking orientation during hold (if feasible)
-
-**App Store Risk:** **NONE**
-
----
-
-### 5. **No Network Required - Offline IAP Validation**
-
-**Severity:** 🟢 **LOW** (actually a feature!)  
-**File:** `PurchaseManager.swift`
-
-**Issue:**  
-The app handles offline IAP validation gracefully:
 ```swift
-catch {
-    if (error as NSError).code == NSURLErrorNotConnectedToInternet {
-        errorMessage = "No internet connection. Please try again later."
-    }
+holdTimer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { timer in
+    holdProgress += timerInterval / holdDuration
+```
+
+The closure captures `self` implicitly (via `holdProgress`). In SwiftUI `@State` views this is typically fine because `@State` properties are managed by SwiftUI's storage, but the `Timer` reference creates a retain concern if the view is removed while the timer is active. The `cancelHold()` in `onEnded` mitigates this, but there's no cleanup on view disappear.
+
+**Fix:** Add `.onDisappear { cancelHold() }` to the view.
+
+### 🟡 Main Thread Work in Canvas
+
+**Files:** All scene views (Snowglobe, Bubbles, etc.)
+
+```swift
+DispatchQueue.main.async {
+    updateParticles(dt: dt, size: size)
+    lastUpdate = timeline.date
 }
 ```
 
-**Behavior:**
-- ✅ Offline mode supported for scenes
-- ⚠️ Purchase requires internet (expected)
-- ✅ Entitlement checks fail gracefully
+Physics updates run on the main thread inside `Canvas` draw calls. With 400 particles this is fine, but it's an anti-pattern — `Canvas` drawing should be pure rendering. The `DispatchQueue.main.async` is a workaround for SwiftUI state mutation restrictions.
 
-**Real-World Likelihood:** **N/A** - This is correct behavior.
+**Impact:** Minor. Current particle counts are manageable.
 
-**Recommendation:** None needed. Works as intended.
+### ✅ No Obvious Memory Leaks
 
-**App Store Risk:** **NONE**
+- All `Timer` references use `[weak self]` in `MotionManager` and `SessionTimerManager` ✅
+- `@Observable` macro handles observation lifecycle ✅
+- No delegate patterns or notification observers without cleanup (except one properly paired in `AppContainerView`)
 
----
+### 🟡 Battery Drain from Animations
 
-### 6. **Motion Data Unavailable on Simulators/Older Devices**
+- `TimelineView(.animation)` runs at **display refresh rate** (60–120fps) continuously
+- `MotionManager` updates at 60fps via `CMMotionManager`
+- Combined: significant battery impact during extended use
 
-**Severity:** 🟢 **LOW**  
-**File:** `MotionManager.swift`
+**Mitigations already in place:**
+- Night mode reduces animation speed (0.6x multiplier) ✅
+- Session timer limits screen time ✅
+- Motion stops when app is backgrounded ✅
 
-**Issue:**  
-```swift
-guard motionManager.isDeviceMotionAvailable else { return }
-```
+**Recommendation:** Consider reducing `TimelineView` to 30fps when the device is stationary (no shake/tilt activity) to save battery.
 
-If motion is unavailable, scenes still render but lose tilt/shake interactivity.
+### ✅ Crash-Prone Patterns
 
-**Affected Devices:**
-- iOS Simulator (no accelerometer)
-- iPod Touch 7th gen (has accelerometer but limited)
-- Hypothetical future devices without motion sensors
-
-**Current Mitigation:**
-- ✅ Graceful degradation - scenes still work, just less interactive
-- ✅ `isAvailable` property exposed for debugging
-
-**Recommendation:**  
-None needed. This is handled correctly.
-
-**App Store Risk:** **NONE**
+- No force unwraps
+- No implicitly unwrapped optionals
+- Array access is via `indices` (safe)
+- Optional chaining used properly throughout
+- `removeAll(where:)` used safely during iteration
 
 ---
 
-### 7. **Crash Risk: Rapid Scene Switching**
+## 5. App Store Rejection Risks
 
-**Severity:** 🟡 **MEDIUM**  
-**File:** `ParentMenuView.swift`, `AppContainerView.swift`
+### 🔴 CRITICAL: Kids Category — Parent Gate Bypass
 
-**Issue:**  
-If a parent rapidly taps multiple scene buttons in the Parent Menu, the state changes could trigger multiple `@ViewBuilder` rebuilds.
+**Apple Guideline 1.3 (Kids Category):**
+> Apps in the Kids category must include a parental gate to prevent children from accessing settings, purchases, or links.
 
-**Potential Issue:**
-- SwiftUI view rebuilds are generally safe, but rapid Canvas re-initialization might cause frame drops or memory spikes
-- SpriteKit scene (`MagneticParticles`) may not clean up properly if switched away from too quickly
+The fallback to auto-unlock when no passcode exists violates this. **This will likely cause rejection.**
 
-**Test Needed:**
-1. Open Parent Menu
-2. Tap scene buttons as fast as possible (10 taps in 2 seconds)
-3. Monitor memory usage and FPS
+### 🟡 MEDIUM: Privacy Nutrition Label
 
-**Recommendation:**
-- Add debouncing to scene selection (e.g., 0.3s cooldown between switches)
-- Ensure SpriteKit scene has proper `deinit`/cleanup
+Required disclosures for App Store:
+- **Data Not Collected** — This is correct; mark all categories as "No" ✅
+- Must declare **no third-party analytics or advertising** ✅
+- `NSMotionUsageDescription` present ✅
+- `NSFaceIDUsageDescription` present ✅
 
-**App Store Risk:** **LOW** - Unlikely to be caught in review, but could cause bad UX.
+**Missing:** No privacy policy URL. Apple requires one for all apps, especially Kids Category. Create a simple privacy policy page.
 
----
+### 🟡 MEDIUM: Age Rating
 
-## 📵 APP STORE REJECTION RISKS
+Recommended: **Ages 4+** (no objectionable content, no web access, no social features)
 
-### 8. **In-App Purchase: Product ID Must Match App Store Connect**
+Ensure the age rating questionnaire answers:
+- No unrestricted web access ✅
+- No gambling ✅  
+- No mature content ✅
+- No user-generated content ✅
 
-**Severity:** 🔴 **CRITICAL FOR IAP**  
-**File:** `PurchaseManager.swift` line 9
+### 🟢 Kids Category Specific Requirements
 
-```swift
-static let productID = "unlock_all_scenes"
-```
+| Requirement | Status |
+|-------------|--------|
+| No third-party advertising | ✅ None |
+| No analytics/tracking | ✅ None |
+| No links out of app | ✅ None |
+| No IAP outside parent gate | ✅ IAP is in ParentMenuView behind gate |
+| COPPA compliance | ✅ No data collection |
+| Parental gate for settings | ⚠️ Bypassable (see above) |
+| No behavioral advertising | ✅ None |
+| Privacy policy | ❌ Missing |
 
-**Requirement:**  
-This **must exactly match** the Product ID in App Store Connect.
+### 🟢 General Compliance
 
-**Rejection Risk:** **HIGH** if misconfigured.
-
-**Checklist for Brent:**
-- [ ] Create In-App Purchase in App Store Connect
-- [ ] Product ID: `unlock_all_scenes` (exact match)
-- [ ] Type: **Non-Consumable**
-- [ ] Price: Tier 3 ($2.99)
-- [ ] Approved for sale
-
-**If this doesn't match:** Purchase button will show "Product not found" and Apple may reject for "broken IAP."
-
----
-
-### 9. **Privacy Policy URL Must Be Live**
-
-**Severity:** 🔴 **CRITICAL FOR SUBMISSION**  
-**Status:** ✅ **ALREADY HANDLED**
-
-**Current URLs:**
-- Privacy Policy: `https://b-kub24.github.io/BabySafeVisuals/privacy-policy.html` ✅
-- Support: `https://b-kub24.github.io/BabySafeVisuals/support.html` ✅
-
-**Verified:** Both URLs exist and are properly formatted.
-
-**App Store Risk:** **NONE** - This is ready.
+- No private APIs used ✅
+- Proper use of StoreKit 2 ✅
+- No background execution abuse ✅
+- Status bar hidden (appropriate for baby app) ✅
+- `persistentSystemOverlays(.hidden)` used ✅
 
 ---
 
-### 10. **Bundle ID Conflicts**
+## Summary of Findings
 
-**Severity:** 🟡 **MEDIUM**  
-**Current Bundle ID:** `BK.BabySafeVisuals`
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| 1 | Parent Gate bypassed when no device passcode | 🔴 CRITICAL | Must fix before submission |
+| 2 | TESTING_MODE not guarded by #if DEBUG | 🟡 MEDIUM | Should fix |
+| 3 | No privacy policy URL | 🟡 MEDIUM | Required for App Store |
+| 4 | Session complete screen dismissible by baby tap | 🟡 MEDIUM | UX concern |
+| 5 | No memory warning handling | 🟡 LOW | Nice to have |
+| 6 | No .onDisappear cleanup for hold timer | 🟡 LOW | Edge case |
+| 7 | Battery drain from constant 60fps rendering | 🟡 LOW | Mitigated by session timer |
+| 8 | Parent Gate hotspot position is fixed/predictable | 🟡 LOW | Acceptable for target age |
 
-**Issue:**  
-This Bundle ID:
-- ✅ Is valid format
-- ⚠️ Uses short prefix "BK" (not recommended but allowed)
-- ❓ May conflict if another app with `BK.*` exists on your Apple Developer account
-
-**Recommendation:**
-- If this is your first app: ✅ Fine
-- If you have other apps: Consider `com.yourdomain.BabySafeVisuals`
-- **Before submitting:** Check App Store Connect → Identifiers → ensure no conflict
-
-**App Store Risk:** **LOW** - Will fail at upload if conflict exists (not rejection, just a blocker).
-
----
-
-### 11. **Face ID/Motion Usage Descriptions**
-
-**Severity:** 🟢 **LOW**  
-**File:** `Info.plist`
-
-**Current Strings:**
-```xml
-<key>NSFaceIDUsageDescription</key>
-<string>Face ID is used to verify parent access to settings.</string>
-
-<key>NSMotionUsageDescription</key>
-<string>Motion is used to make scenes interactive as you tilt and shake the device.</string>
-```
-
-**Status:** ✅ **READY** - Clear, user-friendly, and accurate.
-
-**App Store Risk:** **NONE**
-
----
-
-### 12. **Kids Category Review Requirements**
-
-**Severity:** 🟡 **MEDIUM**  
-**Category:** Likely "Education" or "Entertainment" with "Made for Kids" flag
-
-**Apple's Kids Category Requirements:**
-- ✅ No ads
-- ✅ No third-party analytics
-- ✅ No data collection
-- ✅ Parental gate for external links/purchases
-- ⚠️ **Must comply with COPPA** (Children's Online Privacy Protection Act)
-
-**Current Compliance:**
-- ✅ No external links (privacy policy is in App Store listing, not in-app)
-- ✅ IAP behind parent gate
-- ✅ Zero data collection
-
-**Potential Issue:**  
-If marked "Made for Kids," Apple may require **additional review** for:
-- Age-appropriate content (✅ abstract visuals are fine)
-- No "deceptive" mechanics (✅ no loot boxes, dark patterns)
-
-**Recommendation:**
-- **Category:** "Education" → "Ages 0-5"
-- **Made for Kids:** YES
-- **Content Rating:** 4+ (no objectionable content)
-
-**App Store Risk:** **LOW** - App is well-designed for this category.
-
----
-
-## 🎯 TESTFLIGHT-SPECIFIC RISKS
-
-### 13. **Missing App Icon for All Sizes**
-
-**Severity:** 🟡 **MEDIUM**  
-**Status:** ⚠️ **NEEDS VERIFICATION**
-
-**Current Asset:** `AppIcon.png` (single 1024x1024 file)
-
-**Issue:**  
-Xcode may auto-generate smaller sizes, but TestFlight requires:
-- 1024x1024 (App Store)
-- Multiple sizes for devices (180x180, 167x167, 152x152, etc.)
-
-**Check in Xcode:**
-1. Open `Assets.xcassets` → `AppIcon`
-2. Verify all size slots are filled (or "Single Size" is enabled for iOS 11+)
-
-**If missing:** Xcode will show a warning on archive. Fix by setting "Single Size" in AppIcon settings.
-
-**App Store Risk:** **MEDIUM** - Will block archive upload if invalid.
-
----
-
-### 14. **No Screenshots Prepared**
-
-**Severity:** 🟡 **MEDIUM**  
-**Status:** ❓ **UNKNOWN**
-
-**App Store Connect Requirement:**
-- **6.7" Display** (iPhone 16 Pro Max): 1-10 screenshots
-- **6.5" Display** (iPhone 15 Plus): Alternative set
-- **12.9" iPad Pro**: 1-10 screenshots
-
-**Recommendation:**
-Brent needs to:
-1. Run app on device or simulator
-2. Capture screenshots of:
-   - Snowglobe scene (free)
-   - Water Ripples
-   - Bubbles
-   - Parent Menu (showing scene grid)
-3. Upload via App Store Connect → App Store → Screenshots
-
-**TestFlight Impact:**  
-Not required for TestFlight, but **required for public release**.
-
----
-
-### 15. **Export Compliance (Encryption)**
-
-**Severity:** 🟢 **LOW**  
-**Question Apple Will Ask:** "Does your app use encryption?"
-
-**Answer:** **NO**
-- App uses HTTPS for StoreKit (standard library, exempt)
-- No custom encryption
-- No VPN/secure messaging features
-
-**Action Required:**
-When uploading to App Store Connect, select:
-- "No" to encryption usage
-- Or select "Exempt" → Standard library usage only
-
-**App Store Risk:** **NONE** - Standard question, easy to answer.
-
----
-
-## 🧪 RECOMMENDED TESTING PROTOCOL
-
-### Pre-TestFlight Checklist
-
-**Device Testing:**
-- [ ] iPhone 15 Pro (Face ID + notch)
-- [ ] iPad 10th Gen (no Face ID, Touch ID on top button)
-- [ ] Device with **no passcode set** (test parent gate fallback)
-- [ ] Airplane mode (test offline behavior)
-
-**Interaction Testing:**
-- [ ] Parent gate hold (6 seconds) → Face ID prompt → unlock
-- [ ] Parent gate hold on device without passcode → unlocks after 6s (expected)
-- [ ] Rapid scene switching (10 switches in 5 seconds)
-- [ ] Device rotation during scene + during parent gate hold
-- [ ] Interruptions: incoming call, alarm, low battery alert
-- [ ] Shake/tilt interactions in all scenes
-
-**Purchase Flow Testing:**
-- [ ] Sandbox account configured in Settings → App Store → Sandbox Account
-- [ ] Purchase "Unlock All Scenes" → verify unlock
-- [ ] Restore Purchases → verify restoration
-- [ ] Force quit app → relaunch → premium scenes still unlocked
-
-**Edge Cases:**
-- [ ] Kill app mid-scene → relaunch → correct scene loads
-- [ ] Background app → return after 1 hour → motion resumes
-- [ ] Fill device storage to 90%+ → test scene performance
-
----
-
-## 📋 FINAL RISK ASSESSMENT
-
-| Risk | Severity | Fix Required? | Blocks TestFlight? |
-|------|----------|---------------|-------------------|
-| Parent gate bypass (no passcode) | 🔴 Critical | ⚠️ Recommended | ❌ No |
-| No Guided Access enforcement | 🟡 Medium | ✅ Documented | ❌ No |
-| Interruption handling | 🟡 Medium | ⚠️ Recommended | ❌ No |
-| IAP Product ID mismatch | 🔴 Critical | ✅ Must verify | ✅ **YES** |
-| Privacy policy URL | 🟢 Low | ✅ Done | ❌ No |
-| Bundle ID conflicts | 🟡 Medium | ❓ Check | ⚠️ Maybe |
-| App icon missing sizes | 🟡 Medium | ❓ Check | ⚠️ Maybe |
-
----
-
-## 🎬 CONCLUSION
-
-**Overall Assessment:** ✅ **READY FOR TESTFLIGHT**
-
-**Critical Issues:**
-1. ✅ Verify IAP Product ID matches App Store Connect
-2. ⚠️ Consider improving parent gate security on devices without passcode
-3. ✅ All other issues are documentation/edge cases
-
-**App is safe to ship to TestFlight.** The parent gate bypass on non-passcode devices is a known limitation (not a bug), and the app handles all other edge cases gracefully.
-
-**Recommended Next Steps:**
-1. Review `TESTFLIGHT-READY-CHECKLIST.md` for step-by-step upload guide
-2. Test on physical device with sandbox IAP
-3. Archive and upload to TestFlight
-4. Document any new findings during TestFlight beta
-
----
-
-**Report End**  
-*Generated by Claude (Subagent) - 2026-02-10 05:15 UTC*
+### Priority Actions Before Submission:
+1. **Fix Parent Gate fallback** — Add math/text challenge when biometrics unavailable
+2. **Add privacy policy** — Host a simple page and add URL to App Store Connect
+3. **Guard TESTING_MODE** with `#if DEBUG`
+4. **Require parent gate to dismiss session complete screen**

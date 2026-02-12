@@ -122,16 +122,19 @@ struct SessionTimerOverlayView: View {
                     .foregroundStyle(.white.opacity(0.8))
                 
                 // Dismiss instructions (for parent)
-                Text("Tap anywhere to dismiss")
+                Text("Long press 3 seconds to dismiss")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
                     .padding(.top, 20)
             }
         }
         .transition(.opacity)
-        .onTapGesture {
-            timerManager.dismissCompletion()
-        }
+        .gesture(
+            LongPressGesture(minimumDuration: 3)
+                .onEnded { _ in
+                    timerManager.dismissCompletion()
+                }
+        )
     }
 }
 
