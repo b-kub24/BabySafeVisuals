@@ -78,6 +78,46 @@ struct ScenePreviewView: View {
             DrawingView()
         case .sand:
             SandView()
+        case .phoneDialer:
+            PhoneDialerView()
+        case .abcLetters:
+            ABCLettersView()
+        case .babyPiano:
+            BabyPianoView()
+        case .drumPad:
+            DrumPadView()
+        case .animalSounds:
+            AnimalSoundsView()
+        case .shapeSorter:
+            ShapeSorterView()
+        case .fireworks:
+            FireworksView()
+        case .aquarium:
+            AquariumView()
+        case .butterflies:
+            ButterfliesView()
+        case .starfield:
+            StarfieldView()
+        case .lavaLamp:
+            LavaLampView()
+        case .flowerGarden:
+            FlowerGardenView()
+        case .balloons:
+            BalloonsView()
+        case .bouncyBalls:
+            BouncyBallsView()
+        case .spinningTop:
+            SpinningTopView()
+        case .blockStacker:
+            BlockStackerView()
+        case .kaleidoscope:
+            KaleidoscopeView()
+        case .galaxySwirl:
+            GalaxySwirlView()
+        case .rainOnGlass:
+            RainOnGlassView()
+        case .candle:
+            CandleView()
         }
     }
     
