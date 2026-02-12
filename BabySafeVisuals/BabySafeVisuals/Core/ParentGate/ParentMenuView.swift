@@ -1,13 +1,18 @@
 import SwiftUI
 import StoreKit
 
+enum SceneMode: String, CaseIterable {
+    case startScene = "Start Scene"
+    case freeTest = "Free Test Mode"
+}
+
 struct ParentMenuView: View {
     @Environment(AppState.self) private var appState
     @State private var purchaseManager = PurchaseManager()
     @State private var showGuidedAccessHelp = false
     @State private var guidedAccessEnabled = GuidedAccessStatus.isEnabled
-    @State private var showScenePreviewPicker = false
     @State private var previewingScene: SceneID? = nil
+    @State private var selectedMode: SceneMode = .startScene
 
     private let columns = [
         GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)
@@ -18,11 +23,10 @@ struct ParentMenuView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     scenesSection
-                    startSceneButton
+                    modeSelector
                     purchaseSection
                     sessionTimerSection
                     settingsSection
-                    sceneTestSection
                     guidedAccessSection
                 }
                 .padding(20)
@@ -64,11 +68,15 @@ struct ParentMenuView: View {
     }
 
     private func sceneCell(_ scene: SceneID) -> some View {
-        let isUnlocked = appState.isSceneUnlocked(scene)
+        let isInFreeTest = selectedMode == .freeTest
+        let isUnlocked = isInFreeTest || appState.isSceneUnlocked(scene)
         let isActive = appState.activeScene == scene
+        let showLock = selectedMode == .startScene && !scene.isFree
 
         return Button {
-            if isUnlocked {
+            if isInFreeTest {
+                previewingScene = scene
+            } else if isUnlocked {
                 appState.activeScene = scene
             }
         } label: {
@@ -78,7 +86,7 @@ struct ParentMenuView: View {
                         .fill(scene.previewColor)
                         .frame(height: 80)
 
-                    if !isUnlocked {
+                    if !isUnlocked && !isInFreeTest {
                         Image(systemName: "lock.fill")
                             .font(.title2)
                             .foregroundStyle(.white.opacity(0.7))
@@ -87,10 +95,34 @@ struct ParentMenuView: View {
                             .font(.title2)
                             .foregroundStyle(.white.opacity(0.8))
                     }
+                    
+                    // Lock/unlock badge in lower-right for Start Scene mode
+                    if showLock {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                HStack(spacing: 2) {
+                                    Image(systemName: appState.isPurchased ? "lock.open.fill" : "lock.fill")
+                                        .font(.system(size: 9))
+                                    // Price label next to lock
+                                    if !appState.isPurchased, let price = purchaseManager.product?.displayPrice {
+                                        Text(price)
+                                            .font(.system(size: 8, weight: .medium))
+                                    }
+                                }
+                                .foregroundStyle(.white.opacity(0.8))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(.black.opacity(0.4)))
+                                .padding(4)
+                            }
+                        }
+                    }
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(isActive ? Color.blue : Color.clear, lineWidth: 3)
+                        .strokeBorder(isActive && !isInFreeTest ? Color.blue : Color.clear, lineWidth: 3)
                 )
 
                 Text(scene.displayName)
@@ -105,9 +137,96 @@ struct ParentMenuView: View {
                 }
             }
         }
-        .disabled(!isUnlocked)
+        .disabled(!isUnlocked && !isInFreeTest)
         .accessibilityLabel("\(scene.displayName) scene\(isActive ? ", currently active" : "")\(scene.isFree ? ", free" : ", premium")\(isUnlocked ? "" : ", locked")")
-        .accessibilityHint(isUnlocked ? "Double tap to switch to this scene" : "Requires purchase to unlock")
+    }
+
+    // MARK: - Mode Selector (Start Scene + Free Test)
+
+    private var modeSelector: some View {
+        VStack(spacing: 12) {
+            // Start Scene option
+            Button {
+                selectedMode = .startScene
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: selectedMode == .startScene ? "circle.inset.filled" : "circle")
+                        .foregroundStyle(selectedMode == .startScene ? .blue : .secondary)
+                        .font(.title3)
+                    
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.fill")
+                            .font(.title3)
+                        Text("Start Scene")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.vertical, 16)
+                .padding(.horizontal, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(selectedMode == .startScene ? Color.blue : Color.blue.opacity(0.15))
+                )
+                .foregroundStyle(selectedMode == .startScene ? .white : .blue)
+            }
+            
+            // When Start Scene selected and tapped, lock parent mode
+            if selectedMode == .startScene {
+                Button {
+                    appState.lockParentMode()
+                } label: {
+                    Text("Go!")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.green)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            
+            // Free Test Mode option
+            Button {
+                selectedMode = .freeTest
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: selectedMode == .freeTest ? "circle.inset.filled" : "circle")
+                        .foregroundStyle(selectedMode == .freeTest ? .orange : .secondary)
+                        .font(.title3)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                                .font(.callout)
+                            Text("Free Test Mode")
+                                .font(.callout)
+                                .fontWeight(.semibold)
+                        }
+                        Text("Preview any scene for 30 seconds")
+                            .font(.caption)
+                            .foregroundStyle(selectedMode == .freeTest ? .white.opacity(0.8) : .secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(selectedMode == .freeTest ? Color.orange : Color.orange.opacity(0.1))
+                )
+                .foregroundStyle(selectedMode == .freeTest ? .white : .orange)
+            }
+            
+            if selectedMode == .freeTest {
+                Text("Tap any scene above to preview it")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Purchase Section
@@ -135,8 +254,6 @@ struct ParentMenuView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(purchaseManager.isLoading)
-                    .accessibilityLabel("Unlock all premium scenes for \(product.displayPrice)")
-                    .accessibilityHint("Double tap to purchase")
                 }
 
                 Button {
@@ -149,8 +266,6 @@ struct ParentMenuView: View {
                         .foregroundStyle(.blue)
                 }
                 .disabled(purchaseManager.isLoading)
-                .accessibilityLabel("Restore previous purchases")
-                .accessibilityHint("Double tap if you already purchased to restore access")
 
                 if let error = purchaseManager.errorMessage {
                     Text(error)
@@ -190,8 +305,6 @@ struct ParentMenuView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color(.secondarySystemGroupedBackground))
                 )
-                .accessibilityLabel("Sound effects")
-                .accessibilityHint("Double tap to toggle sound on or off")
             
             nightModeSection
         }
@@ -202,7 +315,6 @@ struct ParentMenuView: View {
     private var nightModeSection: some View {
         @Bindable var state = appState
         return VStack(spacing: 12) {
-            // Night Mode Preference Picker
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "moon.fill")
@@ -211,7 +323,6 @@ struct ParentMenuView: View {
                         .font(.subheadline.weight(.medium))
                     Spacer()
                     
-                    // Show current status when on Auto
                     if state.nightModePreference == .auto {
                         Text(state.isNightModeActive ? "Active" : "Inactive")
                             .font(.caption)
@@ -246,7 +357,6 @@ struct ParentMenuView: View {
                     .fill(Color(.secondarySystemGroupedBackground))
             )
             
-            // Red-Shift Filter Toggle (only visible when night mode can be active)
             if state.nightModePreference != .off {
                 Toggle(isOn: $state.preserveNightVision) {
                     HStack {
@@ -266,47 +376,6 @@ struct ParentMenuView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color(.secondarySystemGroupedBackground))
                 )
-                .accessibilityLabel("Preserve Night Vision")
-                .accessibilityHint("Adds a red filter to help maintain dark adaptation")
-            }
-        }
-    }
-
-    // MARK: - Scene Test (30-Second Preview)
-
-    private var sceneTestSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Test Scenes")
-                .font(.headline)
-
-            Text("Preview any scene for 30 seconds")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(SceneID.allCases) { scene in
-                    Button {
-                        previewingScene = scene
-                    } label: {
-                        VStack(spacing: 6) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(scene.previewColor)
-                                    .frame(height: 60)
-
-                                Image(systemName: "play.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(.white.opacity(0.8))
-                            }
-
-                            Text(scene.displayName)
-                                .font(.caption2)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .accessibilityLabel("Test \(scene.displayName) for 30 seconds")
-                }
             }
         }
     }
@@ -340,31 +409,6 @@ struct ParentMenuView: View {
                         .font(.subheadline)
                 }
             }
-            .accessibilityLabel("How to enable Guided Access")
-            .accessibilityHint("Double tap to view instructions")
         }
-    }
-
-    // MARK: - Start Scene Button
-
-    private var startSceneButton: some View {
-        Button {
-            appState.lockParentMode()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "play.fill")
-                    .font(.title3)
-                Text("Start Scene")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color.blue)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .accessibilityLabel("Start scene and lock")
-        .accessibilityHint("Double tap to start the selected scene and lock the screen")
     }
 }

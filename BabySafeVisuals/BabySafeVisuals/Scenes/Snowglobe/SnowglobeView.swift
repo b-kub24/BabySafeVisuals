@@ -139,18 +139,23 @@ struct SnowglobeView: View {
             particles[i].vx += tiltX * 30 * dt
             particles[i].vy -= tiltY * 15 * dt
 
-            // Shake adds energy
+            // Shake adds energy — like a real snowglobe
             if shake > 0.5 {
-                particles[i].vx += Double.random(in: -shake * 40...shake * 40) * dt
-                particles[i].vy += Double.random(in: -shake * 60...shake * 20) * dt
+                let force = shake * 4.0  // Strong multiplier for satisfying shake
+                particles[i].vx += Double.random(in: -force * 50...force * 50) * dt
+                particles[i].vy += Double.random(in: -force * 80...force * 10) * dt
+                // Add chaotic spin
+                particles[i].vx += Double.random(in: -20...20) * dt
             }
 
             // Gentle drift
             particles[i].vx += sin(particles[i].age * particles[i].driftFreq) * 5 * dt
 
-            // Damping
-            particles[i].vx *= (1.0 - 0.3 * dt)
-            particles[i].vy *= (1.0 - 0.2 * dt)
+            // Damping — gradual settling like a real snowglobe
+            let dampX = shake > 0.3 ? 0.1 : 0.5  // Less damping during shake for more chaos
+            let dampY = shake > 0.3 ? 0.05 : 0.3
+            particles[i].vx *= (1.0 - dampX * dt)
+            particles[i].vy *= (1.0 - dampY * dt)
 
             // Move
             particles[i].x += particles[i].vx * dt

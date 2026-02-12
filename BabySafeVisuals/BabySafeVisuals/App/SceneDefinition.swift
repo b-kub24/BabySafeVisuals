@@ -8,6 +8,8 @@ enum SceneID: String, CaseIterable, Identifiable {
     case magneticParticles
     case auroraOrbs
     case calmStatic
+    case drawing
+    case sand
 
     var id: String { rawValue }
 
@@ -20,6 +22,8 @@ enum SceneID: String, CaseIterable, Identifiable {
         case .magneticParticles: return "Magnetic Particles"
         case .auroraOrbs: return "Aurora Orbs"
         case .calmStatic: return "Calm Static"
+        case .drawing: return "Drawing"
+        case .sand: return "Sand"
         }
     }
 
@@ -36,6 +40,8 @@ enum SceneID: String, CaseIterable, Identifiable {
         case .magneticParticles: return "sparkles"
         case .auroraOrbs: return "light.min"
         case .calmStatic: return "moon.stars"
+        case .drawing: return "pencil.tip"
+        case .sand: return "hourglass"
         }
     }
 
@@ -48,6 +54,8 @@ enum SceneID: String, CaseIterable, Identifiable {
         case .magneticParticles: return Color(red: 0.2, green: 0.1, blue: 0.3)
         case .auroraOrbs: return Color(red: 0.05, green: 0.2, blue: 0.25)
         case .calmStatic: return Color(red: 0.08, green: 0.08, blue: 0.15)
+        case .drawing: return Color(red: 0.25, green: 0.1, blue: 0.35)
+        case .sand: return Color(red: 0.45, green: 0.35, blue: 0.2)
         }
     }
 }

@@ -99,6 +99,21 @@ struct NightModeColors {
             Color(red: 0.02, green: 0.02, blue: 0.04)
         ]
     }
+    // MARK: - Drawing Scene
+    static var drawingGradient: [Color] {
+        [
+            Color(red: 0.03, green: 0.03, blue: 0.05),
+            Color(red: 0.05, green: 0.04, blue: 0.07)
+        ]
+    }
+    
+    // MARK: - Sand Scene
+    static var sandGradient: [Color] {
+        [
+            Color(red: 0.04, green: 0.03, blue: 0.02),
+            Color(red: 0.06, green: 0.04, blue: 0.03)
+        ]
+    }
 }
 
 // MARK: - Night Mode View Modifier

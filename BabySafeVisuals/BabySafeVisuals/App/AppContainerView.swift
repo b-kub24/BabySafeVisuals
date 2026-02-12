@@ -6,19 +6,37 @@ struct AppContainerView: View {
     @Environment(SessionTimerManager.self) private var timerManager
     @Environment(\.colorScheme) private var colorScheme
 
+    @State private var resetTrigger: Bool = false
+    
     var body: some View {
         ZStack {
             activeSceneView
                 .ignoresSafeArea()
-                // Apply dimming based on wind-down phase
                 .opacity(timerManager.dimmingOpacity)
                 .animation(.easeInOut(duration: 1.0), value: timerManager.dimmingOpacity)
-                // Apply night mode effects
                 .nightMode(
                     isActive: appState.isNightModeActive,
                     preserveNightVision: appState.preserveNightVision,
                     brightnessLevel: appState.brightnessLevel
                 )
+                .id(resetTrigger) // Forces view recreation on reset
+
+            // Start Over button (bottom center, subtle)
+            if !appState.parentUnlocked {
+                VStack {
+                    Spacer()
+                    Button {
+                        resetTrigger.toggle()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.20))
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(.white.opacity(0.05)))
+                    }
+                    .padding(.bottom, 30)
+                }
+            }
 
             ParentGateOverlay()
             
@@ -73,6 +91,10 @@ struct AppContainerView: View {
             AuroraOrbsView()
         case .calmStatic:
             CalmStaticView()
+        case .drawing:
+            DrawingView()
+        case .sand:
+            SandView()
         }
     }
 }

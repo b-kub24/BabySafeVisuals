@@ -11,7 +11,7 @@ struct ParentGateOverlay: View {
     @State private var mathB: Int = 0
     @State private var mathAnswer: String = ""
 
-    private let holdDuration: Double = 3.0
+    private let holdDuration: Double = 2.0
     private let timerInterval: Double = 1.0 / 60.0
 
     private var hotspotSize: CGFloat {
@@ -28,20 +28,20 @@ struct ParentGateOverlay: View {
                     VStack {
                         GeometryReader { barGeo in
                             Rectangle()
-                                .fill(Color.white.opacity(0.25))
-                                .frame(width: barGeo.size.width * holdProgress, height: 3)
+                                .fill(Color.white.opacity(0.50))
+                                .frame(width: barGeo.size.width * holdProgress, height: 4)
                                 .animation(.linear(duration: timerInterval), value: holdProgress)
                         }
-                        .frame(height: 3)
-                        .padding(.top, geo.safeAreaInsets.top)
+                        .frame(height: 4)
+                        .padding(.top, geo.safeAreaInsets.top + 8)
                         Spacer()
                     }
                 }
 
                 // Subtle gear icon in upper-right
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Color.white.opacity(0.15))
+                    .font(.system(size: 24))
+                    .foregroundStyle(Color.white.opacity(0.30))
                     .padding(.top, geo.safeAreaInsets.top > 0 ? 12 : 16)
                     .padding(.trailing, 16)
                     .allowsHitTesting(false)
@@ -93,7 +93,7 @@ struct ParentGateOverlay: View {
             }
         }
         .accessibilityLabel("Parent Gate")
-        .accessibilityHint("Press and hold for 3 seconds to access parent controls")
+        .accessibilityHint("Press and hold for 2 seconds to access parent controls")
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in

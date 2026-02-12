@@ -74,6 +74,10 @@ struct ScenePreviewView: View {
             AuroraOrbsView()
         case .calmStatic:
             CalmStaticView()
+        case .drawing:
+            DrawingView()
+        case .sand:
+            SandView()
         }
     }
     

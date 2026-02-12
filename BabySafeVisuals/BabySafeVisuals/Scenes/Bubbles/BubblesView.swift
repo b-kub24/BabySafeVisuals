@@ -1,4 +1,5 @@
 import SwiftUI
+import AudioToolbox
 
 struct BubblesView: View {
     @Environment(MotionManager.self) private var motion
@@ -182,6 +183,10 @@ struct BubblesView: View {
         }) {
             bubbles[index].isPopping = true
             bubbles[index].popProgress = 0
+            // Play pop sound if enabled
+            if appState.soundEnabled {
+                AudioServicesPlaySystemSound(1104)
+            }
         }
     }
 }
